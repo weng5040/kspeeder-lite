@@ -9,6 +9,7 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/kspeeder/kspeeder-lite/internal/config"
+	"github.com/kspeeder/kspeeder-lite/internal/downloader"
 	"github.com/kspeeder/kspeeder-lite/internal/nodemgr"
 	"github.com/kspeeder/kspeeder-lite/internal/registry"
 	"github.com/kspeeder/kspeeder-lite/internal/tlsutil"
@@ -16,8 +17,9 @@ import (
 
 // Dependencies 服务器依赖
 type Dependencies struct {
-	Config  *config.Config
-	NodeMgr *nodemgr.Manager
+	Config     *config.Config
+	NodeMgr    *nodemgr.Manager
+	Downloader *downloader.MultiSourceDownloader
 }
 
 // NewRegistryServer 创建 registry HTTPS 服务器
@@ -28,7 +30,7 @@ func NewRegistryServer(cfg *config.Config, deps *Dependencies) (*http.Server, er
 	r.Use(chimw.RealIP)
 
 	// Registry API V2 路由
-	regHandler := registry.NewHandler(cfg, deps.NodeMgr)
+	regHandler := registry.NewHandler(cfg, deps.NodeMgr, deps.Downloader)
 
 	r.Get("/v2/", regHandler.V2Ping)
 	r.Head("/v2/", regHandler.V2Ping)

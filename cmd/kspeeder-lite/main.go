@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/kspeeder/kspeeder-lite/internal/config"
+	"github.com/kspeeder/kspeeder-lite/internal/downloader"
 	"github.com/kspeeder/kspeeder-lite/internal/metrics"
 	"github.com/kspeeder/kspeeder-lite/internal/nodemgr"
 	"github.com/kspeeder/kspeeder-lite/internal/server"
@@ -49,10 +50,21 @@ func main() {
 		slog.Warn("failed to start config watcher, hot-reload disabled", "error", err)
 	}
 
+	// 初始化多源下载器
+	dl := downloader.NewMultiSourceDownloader(
+		nodeMgr,
+		cfg.Downloader.MaxConcurrentPerBlob,
+		cfg.Downloader.MaxConcurrentGlobal,
+		cfg.Downloader.ChunkMinSize,
+		cfg.Downloader.ChunkMaxSize,
+		cfg.Downloader.NodeFailThreshold,
+	)
+
 	// 构建依赖
 	deps := &server.Dependencies{
-		Config:  cfg,
-		NodeMgr: nodeMgr,
+		Config:     cfg,
+		NodeMgr:    nodeMgr,
+		Downloader: dl,
 	}
 
 	// 启动 registry 服务器 (:5443)

@@ -1,48 +1,25 @@
 package nodemgr
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/kspeeder/kspeeder-lite/internal/config"
 )
-
-// NodeType 节点类型
-type NodeType string
-
-const (
-	NodeTypeMirror NodeType = "mirror"
-	NodeTypeSocks5 NodeType = "socks5"
-	NodeTypeHTTP   NodeType = "http"
-)
-
-// Node 节点定义
-type Node struct {
-	URL         string
-	DisplayName string
-	Type        NodeType
-	Priority    int
-	Enabled     bool
-	Targets     []string
-
-	Speed     float64
-	FailCount int
-	InFlight  int32 // atomic
-	LastCheck time.Time
-	Healthy   bool
-
-	mu sync.Mutex
-}
 
 // Manager 节点管理器
 type Manager struct {
 	nodes    []*Node
 	mu       sync.RWMutex
-	cfg      interface{} // *config.Config, 避免循环依赖
+	cfg      *config.Config
 	balancer *Balancer
+	tester   *SpeedTester
 }
 
-// NewManager 创建节点管理器
-func NewManager(cfg interface{}) *Manager {
+// NewManager 创建节点管理器，从配置构建节点清单
+func NewManager(cfg *config.Config) *Manager {
 	m := &Manager{
 		cfg:      cfg,
 		balancer: NewDefaultBalancer(),
@@ -52,21 +29,90 @@ func NewManager(cfg interface{}) *Manager {
 	return m
 }
 
-// initNodes 从配置初始化节点列表
-func (m *Manager) initNodes(cfg interface{}) {
-	// 节点初始化由外部调用 ReloadNodes 完成
-	m.ReloadNodes(cfg)
-}
-
-// ReloadNodes 重新加载节点配置
-func (m *Manager) ReloadNodes(cfg interface{}) {
-	// 这里需要通过类型断言获取 Config
-	// 由于避免循环依赖，使用 interface{}
+// initNodes 从配置初始化节点列表（mirrors + proxies + builtin）
+func (m *Manager) initNodes(cfg *config.Config) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// 实现将在后续完善，暂时保留为空
-	// 实际应该从 config.Config 中提取 mirror 和 proxy 节点
+	m.nodes = make([]*Node, 0)
+
+	if cfg == nil {
+		return
+	}
+
+	// Dockerhub mirrors
+	for _, mirror := range cfg.Mirrors.Dockerhub {
+		m.nodes = append(m.nodes, &Node{
+			URL:         mirror.URL,
+			DisplayName: mirror.DisplayName,
+			Type:        NodeTypeMirror,
+			Priority:    mirror.Priority,
+			Enabled:     true,
+			Healthy:     true,
+			Targets:     []string{"dockerhub"},
+		})
+	}
+
+	// Ghcr mirrors
+	for _, mirror := range cfg.Mirrors.Ghcr {
+		m.nodes = append(m.nodes, &Node{
+			URL:         mirror.URL,
+			DisplayName: mirror.DisplayName,
+			Type:        NodeTypeMirror,
+			Priority:    mirror.Priority,
+			Enabled:     true,
+			Healthy:     true,
+			Targets:     []string{"ghcr"},
+		})
+	}
+
+	// Proxy nodes (socks5/http)
+	for _, proxy := range cfg.Proxies.Nodes {
+		nodeType := NodeTypeSocks5
+		if len(proxy.URL) >= 4 && proxy.URL[:4] == "http" {
+			nodeType = NodeTypeHTTP
+		}
+		m.nodes = append(m.nodes, &Node{
+			URL:         proxy.URL,
+			DisplayName: proxy.DisplayName,
+			Type:        nodeType,
+			Priority:    proxy.Priority,
+			Enabled:     cfg.Proxies.Enabled,
+			Healthy:     true,
+			Targets:     proxy.Targets,
+		})
+	}
+
+	// Builtin mirrors — 去重合并
+	seen := make(map[string]bool)
+	for _, n := range m.nodes {
+		seen[n.URL] = true
+	}
+	for _, url := range cfg.Builtin.Dockerhub {
+		if seen[url] {
+			continue
+		}
+		seen[url] = true
+		m.nodes = append(m.nodes, &Node{
+			URL:         url,
+			DisplayName: url,
+			Type:        NodeTypeMirror,
+			Priority:    99, // 内置节点最低优先级
+			Enabled:     true,
+			Healthy:     true,
+			Targets:     []string{"dockerhub"},
+		})
+	}
+}
+
+// ReloadNodes 热加载重建节点列表
+func (m *Manager) ReloadNodes(cfgRaw interface{}) {
+	cfg, ok := cfgRaw.(*config.Config)
+	if !ok {
+		return
+	}
+	m.cfg = cfg
+	m.initNodes(cfg)
 }
 
 // List 返回所有节点
@@ -112,22 +158,24 @@ func (m *Manager) SelectForBlob(registry string, expectedSize int64, k int) []*N
 	return m.balancer.TopK(candidates, k)
 }
 
-// MarkFailed 标记节点失败
+// MarkFailed 标记节点失败，连续失败 N 次后熔断
 func (m *Manager) MarkFailed(node *Node) {
 	node.mu.Lock()
 	defer node.mu.Unlock()
 	node.FailCount++
+	node.LastCheck = time.Now()
 	if node.FailCount >= 3 {
 		node.Healthy = false
 	}
 }
 
-// MarkSuccess 标记节点成功
+// MarkSuccess 标记节点成功，恢复健康
 func (m *Manager) MarkSuccess(node *Node) {
 	node.mu.Lock()
 	defer node.mu.Unlock()
 	node.FailCount = 0
 	node.Healthy = true
+	node.LastCheck = time.Now()
 }
 
 // IncrInflight 增加并发计数
@@ -141,8 +189,34 @@ func (m *Manager) DecrInflight(node *Node) {
 }
 
 // StartSpeedTest 启动后台测速
-func (m *Manager) StartSpeedTest(ctx interface{}) {
-	// 后台测速实现将在阶段三完成
+func (m *Manager) StartSpeedTest(ctx context.Context) {
+	testURL := ""
+	intervalSec := 300
+	if m.cfg != nil {
+		testURL = m.cfg.Downloader.SpeedTestURL
+		intervalSec = int(m.cfg.Downloader.SpeedTestInterval.Seconds())
+		if intervalSec <= 0 {
+			intervalSec = 300
+		}
+	}
+	m.tester = NewSpeedTester(testURL, intervalSec)
+	go m.tester.Start(ctx, m.List())
+}
+
+// TestSingleNode 手动对单个节点测速（异步执行）
+func (m *Manager) TestSingleNode(node *Node) {
+	if m.tester == nil {
+		return
+	}
+	go func() {
+		m.tester.testSingle(node, m)
+	}()
+}
+
+// StartHealthProbe 启动后台健康探测
+func (m *Manager) StartHealthProbe(ctx context.Context) {
+	checker := NewHealthChecker(30)
+	go checker.StartProbeLoop(ctx, m)
 }
 
 // GetHealthStatus 获取健康状态统计

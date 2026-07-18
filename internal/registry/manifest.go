@@ -1,3 +1,67 @@
 package registry
 
-// Manifest 代理逻辑已集成到 api.go 的 GetManifest 中
+import (
+	"io"
+	"log/slog"
+	"net/http"
+	"strings"
+
+	"github.com/kspeeder/kspeeder-lite/internal/config"
+)
+
+// proxyManifest 单节点 manifest 代理
+// 选1个健康节点 → 转发 GET/HEAD → 透传响应 headers 和 body
+func (h *Handler) proxyManifest(w http.ResponseWriter, r *http.Request, name, reference string) {
+	nodes := h.nodeMgr.SelectForBlob("dockerhub", 0, 1)
+	if len(nodes) == 0 {
+		http.Error(w, "no healthy nodes available", http.StatusBadGateway)
+		return
+	}
+
+	node := nodes[0]
+	manifestURL := strings.TrimRight(node.URL, "/") + "/v2/" + name + "/manifests/" + reference
+
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, manifestURL, nil)
+	if err != nil {
+		slog.Error("create manifest request", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	// 透传关键 headers
+	copyHeader(req.Header, r.Header, "Accept")
+	copyHeader(req.Header, r.Header, "Authorization")
+
+	// 如果节点配置了 token，添加进去
+	if token := getNodeToken(h.cfg, node.URL); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		slog.Error("manifest fetch failed", "node", node.URL, "error", err)
+		h.nodeMgr.MarkFailed(node)
+		http.Error(w, "upstream error", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNotModified {
+		h.nodeMgr.MarkSuccess(node)
+	}
+
+	// 透传响应 headers 和 body
+	transparentHeaders(w, resp)
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
+}
+
+// getNodeToken 获取节点的 dockerhub token
+func getNodeToken(cfg *config.Config, nodeURL string) string {
+	for _, m := range cfg.Mirrors.Dockerhub {
+		if m.URL == nodeURL && m.Token != "" {
+			return m.Token
+		}
+	}
+	return ""
+}
