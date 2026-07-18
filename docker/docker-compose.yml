@@ -1,8 +1,11 @@
 services:
   pullfusion:
+    # 开发：使用 build 从源码构建
+    # 生产：注释 build，取消注释 image 使用预构建镜像
     build:
       context: ..
       dockerfile: docker/Dockerfile
+    # image: ghcr.io/weng5040/pullfusion:latest
     container_name: pullfusion
     ports:
       - "5443:5443"
@@ -12,5 +15,5 @@ services:
       - ./cache:/cache
     environment:
       - TZ=Asia/Shanghai
-      - KS_CONFIG=/config/nodes.yaml
+      - PF_CONFIG=/config/nodes.yaml
     restart: unless-stopped
