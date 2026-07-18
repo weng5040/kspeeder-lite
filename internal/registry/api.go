@@ -54,9 +54,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rtr := chi.NewRouter()
 	rtr.Get("/v2/", h.V2Ping)
 	rtr.Head("/v2/", h.V2Ping)
-	rtr.Get("/v2/{name}/manifests/{reference}", h.GetManifest)
-	rtr.Head("/v2/{name}/manifests/{reference}", h.GetManifest)
-	rtr.Get("/v2/{name}/blobs/{digest}", h.GetBlob)
-	rtr.Head("/v2/{name}/blobs/{digest}", h.GetBlob)
+	rtr.Get("/v2/{name:.+}/manifests/{reference}", h.GetManifest)
+	rtr.Head("/v2/{name:.+}/manifests/{reference}", h.GetManifest)
+	rtr.Get("/v2/{name:.+}/blobs/{digest}", h.GetBlob)
+	rtr.Head("/v2/{name:.+}/blobs/{digest}", h.GetBlob)
 	rtr.ServeHTTP(w, r)
 }

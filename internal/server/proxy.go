@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -98,6 +99,7 @@ func (h *connectHandler) handleConnect(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleRegistryTunnel 处理 registry 内部隧道
+// 从 clientConn 读取 HTTP 请求，通过 registry handler 路由，写回响应
 func (h *connectHandler) handleRegistryTunnel(w http.ResponseWriter, r *http.Request) {
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
@@ -105,7 +107,7 @@ func (h *connectHandler) handleRegistryTunnel(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	clientConn, bufrw, err := hijacker.Hijack()
+	clientConn, _, err := hijacker.Hijack()
 	if err != nil {
 		slog.Error("hijack failed", "error", err)
 		return
@@ -115,63 +117,24 @@ func (h *connectHandler) handleRegistryTunnel(w http.ResponseWriter, r *http.Req
 	// 发送 200 Connection Established
 	clientConn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
 
-	// 处理隧道内的 HTTP 请求
+	// 使用 bufio.Reader 读取隧道内的 HTTP 请求
+	reader := bufio.NewReader(clientConn)
+
 	for {
-		// 读取请求行: "GET /v2/... HTTP/1.1\r\n"
-		reqLine, err := bufrw.ReadString('\n')
+		// 使用 http.ReadRequest 读取完整的 HTTP 请求
+		req, err := http.ReadRequest(reader)
 		if err != nil {
 			if err != io.EOF {
-				slog.Error("read tunnel request line", "error", err)
+				slog.Error("read tunnel request", "error", err)
 			}
 			return
 		}
-		reqLine = strings.TrimSpace(reqLine)
-		if reqLine == "" {
-			continue
+		// 确保 URL 不为 nil（http.ReadRequest 可能返回 nil URL 对于代理请求）
+		if req.URL == nil {
+			req.URL = &url.URL{}
 		}
 
-		// 解析 Method, Path, HTTP version
-		parts := strings.SplitN(reqLine, " ", 3)
-		if len(parts) < 3 {
-			slog.Error("invalid request line", "line", reqLine)
-			return
-		}
-		method := parts[0]
-		path := parts[1]
-		proto := strings.TrimPrefix(parts[2], "HTTP/")
-
-		// 读取 headers
-		header := make(http.Header)
-		for {
-			line, err := bufrw.ReadString('\n')
-			if err != nil {
-				if err != io.EOF {
-					slog.Error("read tunnel header", "error", err)
-				}
-				return
-			}
-			line = strings.TrimSpace(line)
-			if line == "" {
-				break
-			}
-			idx := strings.Index(line, ":")
-			if idx > 0 {
-				key := strings.TrimSpace(line[:idx])
-				val := strings.TrimSpace(line[idx+1:])
-				header.Add(key, val)
-			}
-		}
-
-		// 构建 http.Request
-		req := &http.Request{
-			Method: method,
-			URL:    &url.URL{Path: path},
-			Proto:  "HTTP/" + proto,
-			Header: header,
-			Host:   header.Get("Host"),
-		}
-
-		// 创建 mock ResponseWriter
+		// 创建 ResponseWriter 包装 clientConn（流式写入）
 		respWriter := &tunnelResponseWriter{
 			conn:   clientConn,
 			header: make(http.Header),
@@ -181,19 +144,26 @@ func (h *connectHandler) handleRegistryTunnel(w http.ResponseWriter, r *http.Req
 		h.regHandler.ServeHTTP(respWriter, req)
 
 		// 如果是非持久连接，关闭
-		if header.Get("Connection") == "close" {
+		if strings.EqualFold(req.Header.Get("Connection"), "close") {
 			return
+		}
+
+		// 对于无 body 的请求（GET/HEAD），http.ReadRequest 不会消费多余字节
+		// 但如果 handler 没有完全消费 body，需要 drain
+		if req.Body != nil {
+			io.Copy(io.Discard, req.Body)
+			req.Body.Close()
 		}
 	}
 }
 
-// tunnelResponseWriter 隧道内响应写入器
+// tunnelResponseWriter 隧道内流式响应写入器
+// 将 handler 产生的 HTTP 响应直接写入 clientConn
 type tunnelResponseWriter struct {
 	conn        net.Conn
 	header      http.Header
 	wroteHeader bool
 	statusCode  int
-	body        []byte
 }
 
 func (w *tunnelResponseWriter) Header() http.Header {
@@ -204,8 +174,8 @@ func (w *tunnelResponseWriter) Write(data []byte) (int, error) {
 	if !w.wroteHeader {
 		w.WriteHeader(http.StatusOK)
 	}
-	w.body = append(w.body, data...)
-	return len(data), nil
+	// 直接流式写入连接，不缓冲
+	return w.conn.Write(data)
 }
 
 func (w *tunnelResponseWriter) WriteHeader(statusCode int) {
@@ -215,40 +185,23 @@ func (w *tunnelResponseWriter) WriteHeader(statusCode int) {
 	w.wroteHeader = true
 	w.statusCode = statusCode
 
-	// 构建并写入 HTTP 响应
+	// 构建并写入 HTTP 响应头
 	statusText := http.StatusText(statusCode)
 	if statusText == "" {
-		statusText = fmt.Sprintf("%d", statusCode)
+		statusText = "Unknown"
 	}
 
 	var resp strings.Builder
-	resp.WriteString("HTTP/1.1 ")
-	resp.WriteString(fmt.Sprintf("%d", statusCode))
-	resp.WriteString(" ")
-	resp.WriteString(statusText)
-	resp.WriteString("\r\n")
+	fmt.Fprintf(&resp, "HTTP/1.1 %d %s\r\n", statusCode, statusText)
 
 	for key, vals := range w.header {
 		for _, val := range vals {
-			resp.WriteString(key)
-			resp.WriteString(": ")
-			resp.WriteString(val)
-			resp.WriteString("\r\n")
+			fmt.Fprintf(&resp, "%s: %s\r\n", key, val)
 		}
-	}
-
-	if len(w.body) > 0 {
-		resp.WriteString("Content-Length: ")
-		resp.WriteString(fmt.Sprintf("%d", len(w.body)))
-		resp.WriteString("\r\n")
 	}
 	resp.WriteString("\r\n")
 
 	w.conn.Write([]byte(resp.String()))
-	if len(w.body) > 0 {
-		w.conn.Write(w.body)
-		w.body = nil
-	}
 }
 
 // checkAuth 校验 Basic Auth

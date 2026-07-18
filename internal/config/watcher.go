@@ -4,6 +4,8 @@ import (
 	"log/slog"
 
 	"github.com/fsnotify/fsnotify"
+
+	"github.com/kspeeder/kspeeder-lite/internal/metrics"
 )
 
 // NodeManager 节点管理器接口（避免循环依赖）
@@ -37,6 +39,7 @@ func StartWatcher(path string, cfg *Config, mgr NodeManager) (*fsnotify.Watcher,
 				if mgr != nil {
 					mgr.ReloadNodes(cfg)
 				}
+				metrics.IncConfigReload()
 				slog.Info("config reloaded successfully")
 			}
 		}

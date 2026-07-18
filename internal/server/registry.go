@@ -34,13 +34,13 @@ func NewRegistryServer(cfg *config.Config, deps *Dependencies) (*http.Server, er
 
 	r.Get("/v2/", regHandler.V2Ping)
 	r.Head("/v2/", regHandler.V2Ping)
-	r.Get("/v2/{name}/manifests/{reference}", regHandler.GetManifest)
-	r.Head("/v2/{name}/manifests/{reference}", regHandler.GetManifest)
-	r.Get("/v2/{name}/blobs/{digest}", regHandler.GetBlob)
-	r.Head("/v2/{name}/blobs/{digest}", regHandler.GetBlob)
+	r.Get("/v2/{name:.+}/manifests/{reference}", regHandler.GetManifest)
+	r.Head("/v2/{name:.+}/manifests/{reference}", regHandler.GetManifest)
+	r.Get("/v2/{name:.+}/blobs/{digest}", regHandler.GetBlob)
+	r.Head("/v2/{name:.+}/blobs/{digest}", regHandler.GetBlob)
 
 	// 上传端返回 405
-	r.Post("/v2/{name}/blobs/uploads/", func(w http.ResponseWriter, r *http.Request) {
+	r.Post("/v2/{name:.+}/blobs/uploads/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	})
 

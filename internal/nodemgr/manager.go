@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/kspeeder/kspeeder-lite/internal/config"
+	"github.com/kspeeder/kspeeder-lite/internal/metrics"
 )
 
 // Manager 节点管理器
@@ -158,7 +159,7 @@ func (m *Manager) SelectForBlob(registry string, expectedSize int64, k int) []*N
 	return m.balancer.TopK(candidates, k)
 }
 
-// MarkFailed 标记节点失败，连续失败 N 次后熔断
+// MarkFailed 标记节点失败，连续失败 N 次后熔断，更新 Prometheus metrics
 func (m *Manager) MarkFailed(node *Node) {
 	node.mu.Lock()
 	defer node.mu.Unlock()
@@ -167,25 +168,30 @@ func (m *Manager) MarkFailed(node *Node) {
 	if node.FailCount >= 3 {
 		node.Healthy = false
 	}
+	metrics.NodeHealth.WithLabelValues(node.DisplayName).Set(0)
 }
 
-// MarkSuccess 标记节点成功，恢复健康
+// MarkSuccess 标记节点成功，恢复健康并更新 Prometheus metrics
 func (m *Manager) MarkSuccess(node *Node) {
 	node.mu.Lock()
 	defer node.mu.Unlock()
 	node.FailCount = 0
 	node.Healthy = true
 	node.LastCheck = time.Now()
+	metrics.NodeHealth.WithLabelValues(node.DisplayName).Set(1)
+	metrics.NodeSpeed.WithLabelValues(node.DisplayName).Set(node.Speed)
 }
 
-// IncrInflight 增加并发计数
+// IncrInflight 增加并发计数并更新 Prometheus metrics
 func (m *Manager) IncrInflight(node *Node) {
 	atomic.AddInt32(&node.InFlight, 1)
+	metrics.NodeInflight.WithLabelValues(node.DisplayName).Set(float64(atomic.LoadInt32(&node.InFlight)))
 }
 
-// DecrInflight 减少并发计数
+// DecrInflight 减少并发计数并更新 Prometheus metrics
 func (m *Manager) DecrInflight(node *Node) {
 	atomic.AddInt32(&node.InFlight, -1)
+	metrics.NodeInflight.WithLabelValues(node.DisplayName).Set(float64(atomic.LoadInt32(&node.InFlight)))
 }
 
 // StartSpeedTest 启动后台测速

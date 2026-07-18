@@ -89,3 +89,8 @@ func Init() {
 func Handler() http.Handler {
 	return promhttp.Handler()
 }
+
+// IncConfigReload 增加配置重载计数
+func IncConfigReload() {
+	ConfigReloadsTotal.Inc()
+}
