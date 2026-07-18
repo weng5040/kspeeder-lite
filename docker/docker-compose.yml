@@ -1,0 +1,16 @@
+services:
+  kspeeder-lite:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: kspeeder-lite
+    ports:
+      - "5443:5443"
+      - "5003:5003"
+    volumes:
+      - ./config:/config
+      - ./cache:/cache
+    environment:
+      - TZ=Asia/Shanghai
+      - KS_CONFIG=/config/nodes.yaml
+    restart: unless-stopped

@@ -1,0 +1,54 @@
+# ============ 镜像源节点（HTTPS mirror）============
+mirrors:
+  dockerhub:
+    - url: https://docker.1ms.run
+      priority: 1
+      display_name: 1ms
+    - url: https://docker.m.daocloud.io
+      priority: 2
+      display_name: daocloud
+    - url: https://dockerproxy.net
+      priority: 3
+      display_name: dockerproxy
+    - url: https://hub.rat.dev
+      priority: 4
+      display_name: ratdev
+  ghcr: []
+
+# ============ 代理节点（socks5/http，带宽叠加主力）============
+proxies:
+  enabled: false
+  nodes: []
+    # - url: socks5://192.168.1.10:1080
+    #   display_name: proxy-ss-1
+    #   priority: 1
+    #   targets: [dockerhub]
+
+# ============ 服务器配置============
+server:
+  registry_port: 5443
+  proxy_port: 5003
+  proxy_auth: ""
+  registry_domain: registry.local
+  tls:
+    cert: ""
+    key: ""
+
+# ============ 下载策略============
+downloader:
+  max_concurrent_per_blob: 4
+  max_concurrent_global: 64
+  chunk_min_size: 1048576
+  chunk_max_size: 16777216
+  node_fail_threshold: 3
+  speed_test_interval: 300s
+  speed_test_url: "https://github.com/linkease/istore-packages/releases/download/prebuilt/quickstart-binary-0.11.9.tar.gz"
+
+# ============ 内置公共节点（首次启动预置）============
+builtin_mirrors:
+  dockerhub:
+    - https://docker.1ms.run
+    - https://docker.m.daocloud.io
+    - https://dockerproxy.net
+    - https://hub.rat.dev
+    - https://docker.xuanyuan.me
