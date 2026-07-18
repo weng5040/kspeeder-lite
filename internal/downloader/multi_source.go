@@ -119,6 +119,11 @@ func (d *MultiSourceDownloader) headProbe(ctx context.Context, nodes []*nodemgr.
 				return
 			}
 
+			// 如果节点有 token，添加认证头
+			if node.Token != "" {
+				httpReq.Header.Set("Authorization", "Bearer "+node.Token)
+			}
+
 			resp, err := http.DefaultClient.Do(httpReq)
 			if err != nil {
 				d.nodeMgr.MarkFailed(node)
@@ -245,6 +250,11 @@ func (d *MultiSourceDownloader) singleNodeDownload(ctx context.Context, req Down
 		} else {
 			httpReq.Header.Set("Range", fmt.Sprintf("bytes=%d-", req.Range.Start))
 		}
+	}
+
+	// 如果节点有 token，添加认证头
+	if node.Token != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+node.Token)
 	}
 
 	d.nodeMgr.IncrInflight(node)
