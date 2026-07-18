@@ -22,6 +22,7 @@ type Node struct {
 	Priority    int
 	Enabled     bool
 	Targets     []string
+Token       string // PAT token for authenticated registries (e.g. ghcr)
 
 	Speed     float64
 	FailCount int

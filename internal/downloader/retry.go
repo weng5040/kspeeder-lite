@@ -83,6 +83,11 @@ func downloadChunkData(ctx context.Context, ch *Chunk, req DownloadRequest, node
 		httpReq.Header.Set("Range", fmt.Sprintf("bytes=%d-", ch.Start))
 	}
 
+	// 如果节点有 token，添加认证头
+	if node.Token != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+node.Token)
+	}
+
 	resp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("http get: %w", err)

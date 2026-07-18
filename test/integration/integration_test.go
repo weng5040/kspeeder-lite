@@ -78,7 +78,7 @@ func TestNoHealthyNodes(t *testing.T) {
 		Digest:   "sha256:test",
 		Registry: "dockerhub",
 	}
-	_, _, err := dl.Download(context.Background(), req)
+	_, _, _, err := dl.Download(context.Background(), req)
 	if err == nil {
 		t.Error("expected error when no nodes available")
 	}

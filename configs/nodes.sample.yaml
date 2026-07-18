@@ -13,7 +13,11 @@ mirrors:
     - url: https://hub.rat.dev
       priority: 4
       display_name: ratdev
-  ghcr: []
+  ghcr:
+    - url: https://ghcr.nju.edu.cn
+      priority: 1
+      display_name: nju-ghcr
+      # token: ""  # 可选：GitHub Personal Access Token，需 read:packages 权限
 
 # ============ 代理节点（socks5/http，带宽叠加主力）============
 proxies:
@@ -52,3 +56,5 @@ builtin_mirrors:
     - https://dockerproxy.net
     - https://hub.rat.dev
     - https://docker.xuanyuan.me
+  ghcr:
+    - https://ghcr.nju.edu.cn

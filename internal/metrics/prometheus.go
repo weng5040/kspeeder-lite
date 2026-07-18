@@ -69,6 +69,28 @@ var (
 			Help: "Total config reloads",
 		},
 	)
+
+	// 缓存指标
+	CacheHitsTotal = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "kspeeder_cache_hits_total",
+			Help: "Total cache hits",
+		},
+	)
+
+	CacheMissesTotal = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "kspeeder_cache_misses_total",
+			Help: "Total cache misses",
+		},
+	)
+
+	CacheSizeBytes = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "kspeeder_cache_size_bytes",
+			Help: "Current cache size in bytes",
+		},
+	)
 )
 
 // Init 注册 Prometheus 指标
@@ -82,6 +104,9 @@ func Init() {
 		NodeInflight,
 		ActiveDownloads,
 		ConfigReloadsTotal,
+		CacheHitsTotal,
+		CacheMissesTotal,
+		CacheSizeBytes,
 	)
 }
 
@@ -93,4 +118,19 @@ func Handler() http.Handler {
 // IncConfigReload 增加配置重载计数
 func IncConfigReload() {
 	ConfigReloadsTotal.Inc()
+}
+
+// TrackCacheHit 缓存命中
+func TrackCacheHit() {
+	CacheHitsTotal.Inc()
+}
+
+// TrackCacheMiss 缓存未命中
+func TrackCacheMiss() {
+	CacheMissesTotal.Inc()
+}
+
+// SetCacheSizeBytes 设置当前缓存大小
+func SetCacheSizeBytes(bytes int64) {
+	CacheSizeBytes.Set(float64(bytes))
 }

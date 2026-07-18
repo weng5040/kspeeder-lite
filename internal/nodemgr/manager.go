@@ -64,6 +64,7 @@ func (m *Manager) initNodes(cfg *config.Config) {
 			Enabled:     true,
 			Healthy:     true,
 			Targets:     []string{"ghcr"},
+			Token:       mirror.Token,
 		})
 	}
 
@@ -89,6 +90,8 @@ func (m *Manager) initNodes(cfg *config.Config) {
 	for _, n := range m.nodes {
 		seen[n.URL] = true
 	}
+
+	// Builtin dockerhub
 	for _, url := range cfg.Builtin.Dockerhub {
 		if seen[url] {
 			continue
@@ -102,6 +105,23 @@ func (m *Manager) initNodes(cfg *config.Config) {
 			Enabled:     true,
 			Healthy:     true,
 			Targets:     []string{"dockerhub"},
+		})
+	}
+
+	// Builtin ghcr
+	for _, url := range cfg.Builtin.Ghcr {
+		if seen[url] {
+			continue
+		}
+		seen[url] = true
+		m.nodes = append(m.nodes, &Node{
+			URL:         url,
+			DisplayName: url,
+			Type:        NodeTypeMirror,
+			Priority:    99,
+			Enabled:     true,
+			Healthy:     true,
+			Targets:     []string{"ghcr"},
 		})
 	}
 }

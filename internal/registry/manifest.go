@@ -9,10 +9,11 @@ import (
 	"github.com/kspeeder/kspeeder-lite/internal/config"
 )
 
-// proxyManifest 单节点 manifest 代理
-// 选1个健康节点 → 转发 GET/HEAD → 透传响应 headers 和 body
-func (h *Handler) proxyManifest(w http.ResponseWriter, r *http.Request, name, reference string) {
-	nodes := h.nodeMgr.SelectForBlob("dockerhub", 0, 1)
+// proxyManifest 单节点 manifest 代理。
+// 选1个健康节点 → 转发 GET/HEAD → 透传响应 headers 和 body。
+// registry 参数用于选择节点来源（dockerhub/ghcr）。
+func (h *Handler) proxyManifest(w http.ResponseWriter, r *http.Request, name, reference, registry string) {
+	nodes := h.nodeMgr.SelectForBlob(registry, 0, 1)
 	if len(nodes) == 0 {
 		http.Error(w, "no healthy nodes available", http.StatusBadGateway)
 		return
@@ -56,8 +57,15 @@ func (h *Handler) proxyManifest(w http.ResponseWriter, r *http.Request, name, re
 	io.Copy(w, resp.Body)
 }
 
-// getNodeToken 获取节点的 dockerhub token
+// getNodeToken 获取节点的 token（支持 dockerhub 和 ghcr）
 func getNodeToken(cfg *config.Config, nodeURL string) string {
+	// ghcr
+	for _, m := range cfg.Mirrors.Ghcr {
+		if m.URL == nodeURL && m.Token != "" {
+			return m.Token
+		}
+	}
+	// dockerhub
 	for _, m := range cfg.Mirrors.Dockerhub {
 		if m.URL == nodeURL && m.Token != "" {
 			return m.Token

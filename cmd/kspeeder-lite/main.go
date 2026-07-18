@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kspeeder/kspeeder-lite/internal/admin"
+	"github.com/kspeeder/kspeeder-lite/internal/cache"
 	"github.com/kspeeder/kspeeder-lite/internal/config"
 	"github.com/kspeeder/kspeeder-lite/internal/downloader"
 	"github.com/kspeeder/kspeeder-lite/internal/metrics"
@@ -23,34 +25,41 @@ func main() {
 	configPath := flag.String("config", "/config/nodes.yaml", "path to nodes.yaml config file")
 	flag.Parse()
 
-	// 环境变量覆盖
 	if envConfig := os.Getenv("KS_CONFIG"); envConfig != "" {
 		*configPath = envConfig
 	}
 
 	slog.Info("kspeeder-lite starting", "version", version.Version, "config", *configPath)
 
-	// 加载配置
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
 
-	// 初始化 metrics
 	metrics.Init()
 
-	// 初始化节点管理器
+	// 初始化 Blob 本地磁盘缓存（二次加速）
+	var blobCache *cache.Cache
+	if cfg.Downloader.CacheEnabled {
+		blobCache, err = cache.NewCache(cfg.Downloader.CacheDir, cfg.Downloader.CacheMaxSize)
+		if err != nil {
+			slog.Error("failed to create blob cache, caching disabled", "error", err)
+		} else {
+			used, _, count := blobCache.Stats()
+			slog.Info("blob cache enabled", "dir", cfg.Downloader.CacheDir,
+				"used", used, "files", count)
+		}
+	}
+
 	nodeMgr := nodemgr.NewManager(cfg)
 	nodeMgr.StartSpeedTest(context.Background())
 
-	// 启动配置热加载
 	configWatcher, err := config.StartWatcher(*configPath, cfg, nodeMgr)
 	if err != nil {
 		slog.Warn("failed to start config watcher, hot-reload disabled", "error", err)
 	}
 
-	// 初始化多源下载器
 	dl := downloader.NewMultiSourceDownloader(
 		nodeMgr,
 		cfg.Downloader.MaxConcurrentPerBlob,
@@ -60,28 +69,38 @@ func main() {
 		cfg.Downloader.NodeFailThreshold,
 	)
 
-	// 构建依赖
+	api := admin.NewAPI(nodeMgr)
+
 	deps := &server.Dependencies{
 		Config:     cfg,
 		NodeMgr:    nodeMgr,
 		Downloader: dl,
+		Recorder:   api,
 	}
 
-	// 启动 registry 服务器 (:5443)
 	registrySrv, err := server.NewRegistryServer(cfg, deps)
 	if err != nil {
 		slog.Error("failed to create registry server", "error", err)
 		os.Exit(1)
 	}
 
-	// 启动 CONNECT 代理服务器 (:5003)
 	proxySrv := server.NewConnectProxy(cfg, deps)
 
-	// 优雅关闭
+	if configWatcher != nil {
+		api.SetReloader(func() error {
+			newCfg, err := config.Load(*configPath)
+			if err != nil {
+				return err
+			}
+			nodeMgr.ReloadNodes(newCfg)
+			metrics.IncConfigReload()
+			return nil
+		})
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	// 启动 registry HTTPS 服务
 	go func() {
 		addr := fmt.Sprintf(":%d", cfg.Server.RegistryPort)
 		slog.Info("registry server listening", "addr", addr)
@@ -90,7 +109,6 @@ func main() {
 		}
 	}()
 
-	// 启动 CONNECT 代理
 	go func() {
 		addr := fmt.Sprintf(":%d", cfg.Server.ProxyPort)
 		slog.Info("connect proxy listening", "addr", addr)

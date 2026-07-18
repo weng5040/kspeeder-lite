@@ -37,16 +37,10 @@ type Chunk struct {
 }
 
 // MultiSourceDownloader 多源并发下载器
-//
-// 核心流程：
-//  1. HEAD 探测候选节点，确认 blob 存在并获取 Content-Length
-//  2. 单节点 → 透传下载；多节点 → Chunker 按权重分块
-//  3. 并发 goroutine 下载各分块（受全局 + 单 blob 信号量约束）
-//  4. merger 流式有序合并，失败分块自动重试
 type MultiSourceDownloader struct {
 	nodeMgr       *nodemgr.Manager
-	maxConcurrent int           // 单个 blob 最大并发
-	globalSem     chan struct{} // 全局并发信号量
+	maxConcurrent int
+	globalSem     chan struct{}
 	chunkMinSize  int64
 	chunkMaxSize  int64
 	failThreshold int
@@ -66,41 +60,37 @@ func NewMultiSourceDownloader(nodeMgr *nodemgr.Manager, maxConcurrent, maxGlobal
 	}
 }
 
-// Download 多源下载 blob。
-//
-// 步骤：
-//  1. SelectForBlob 获取候选节点
-//  2. HEAD 探测，过滤不可用节点，获取 Content-Length
-//  3. 1 节点 → 透传；多节点 → 分块并发 + 流式合并
-func (d *MultiSourceDownloader) Download(ctx context.Context, req DownloadRequest) (io.ReadCloser, int64, error) {
-	// 1. 选择候选节点
+// Download 多源下载 blob，返回 (reader, contentLength, nodeCount, error)
+func (d *MultiSourceDownloader) Download(ctx context.Context, req DownloadRequest) (io.ReadCloser, int64, int, error) {
 	nodes := d.nodeMgr.SelectForBlob(req.Registry, req.ExpectedSize, d.maxConcurrent)
 	if len(nodes) == 0 {
-		return nil, 0, fmt.Errorf("no nodes available")
+		return nil, 0, 0, fmt.Errorf("no nodes available")
 	}
 
-	// 2. HEAD 探测所有候选节点
 	healthyNodes, totalSize, err := d.headProbe(ctx, nodes, req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("head probe: %w", err)
+		return nil, 0, 0, fmt.Errorf("head probe: %w", err)
 	}
 	if len(healthyNodes) == 0 {
-		return nil, 0, fmt.Errorf("no healthy nodes after HEAD probe")
+		return nil, 0, 0, fmt.Errorf("no healthy nodes after HEAD probe")
 	}
 
 	if totalSize <= 0 {
 		totalSize = req.ExpectedSize
 	}
 
-	// 3. 分支：单节点透传，多节点分块并发
-	if len(healthyNodes) == 1 {
-		return d.singleNodeDownload(ctx, req, healthyNodes[0])
+	nodeCount := len(healthyNodes)
+
+	if nodeCount == 1 {
+		r, sz, err := d.singleNodeDownload(ctx, req, healthyNodes[0])
+		return r, sz, nodeCount, err
 	}
 
-	return d.multiNodeDownload(ctx, req, healthyNodes, totalSize)
+	r, sz, err := d.multiNodeDownload(ctx, req, healthyNodes, totalSize)
+	return r, sz, nodeCount, err
 }
 
-// headProbe 并发 HEAD 探测所有节点，返回可用节点列表及 Content-Length。
+// headProbe 并发 HEAD 探测所有节点
 func (d *MultiSourceDownloader) headProbe(ctx context.Context, nodes []*nodemgr.Node, req DownloadRequest) ([]*nodemgr.Node, int64, error) {
 	type probeResult struct {
 		node *nodemgr.Node
@@ -167,14 +157,13 @@ func (d *MultiSourceDownloader) headProbe(ctx context.Context, nodes []*nodemgr.
 	return healthy, confirmedSize, nil
 }
 
-// multiNodeDownload 多节点并发分块下载 + 流式合并。
+// multiNodeDownload 多节点并发分块下载 + 流式合并
 func (d *MultiSourceDownloader) multiNodeDownload(
 	ctx context.Context,
 	req DownloadRequest,
 	nodes []*nodemgr.Node,
 	totalSize int64,
 ) (io.ReadCloser, int64, error) {
-	// 分配分块
 	chunks := d.chunker.Allocate(nodes, totalSize, req.Range)
 	if len(chunks) == 0 {
 		return nil, 0, fmt.Errorf("chunk allocation produced no chunks")
@@ -197,7 +186,6 @@ func (d *MultiSourceDownloader) multiNodeDownload(
 		wg.Add(1)
 		chunk := ch
 
-		// 全局信号量
 		select {
 		case d.globalSem <- struct{}{}:
 		case <-ctx.Done():
@@ -205,7 +193,6 @@ func (d *MultiSourceDownloader) multiNodeDownload(
 			continue
 		}
 
-		// per-blob 信号量
 		sem <- struct{}{}
 
 		go func() {
@@ -232,7 +219,6 @@ func (d *MultiSourceDownloader) multiNodeDownload(
 		close(results)
 	}()
 
-	// 流式合并（后台 goroutine）
 	go func() {
 		if err := mergeChunksStream(ctx, len(chunks), results, pw, d.nodeMgr, req, d.failThreshold); err != nil {
 			pw.CloseWithError(err)
@@ -244,7 +230,7 @@ func (d *MultiSourceDownloader) multiNodeDownload(
 	return pr, totalSize, nil
 }
 
-// singleNodeDownload 单节点下载（透传模式）
+// singleNodeDownload 单节点下载
 func (d *MultiSourceDownloader) singleNodeDownload(ctx context.Context, req DownloadRequest, node *nodemgr.Node) (io.ReadCloser, int64, error) {
 	blobURL := fmt.Sprintf("%s/v2/%s/blobs/%s", node.URL, req.Name, req.Digest)
 

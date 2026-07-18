@@ -70,11 +70,15 @@ type DownloaderConfig struct {
 	NodeFailThreshold    int           `yaml:"node_fail_threshold"`
 	SpeedTestInterval    time.Duration `yaml:"speed_test_interval"`
 	SpeedTestURL         string        `yaml:"speed_test_url"`
+	CacheEnabled         bool          `yaml:"cache_enabled"`
+	CacheDir             string        `yaml:"cache_dir"`
+	CacheMaxSize         int64         `yaml:"cache_max_size"`
 }
 
 // BuiltinConfig 内置节点配置
 type BuiltinConfig struct {
 	Dockerhub []string `yaml:"dockerhub"`
+	Ghcr      []string `yaml:"ghcr"`
 }
 
 // Load 加载配置文件
@@ -137,6 +141,27 @@ func applyDefaults(cfg *Config) {
 			{URL: "https://hub.rat.dev", Priority: 4, DisplayName: "ratdev"},
 			{URL: "https://docker.xuanyuan.me", Priority: 5, DisplayName: "xuanyuan"},
 		}
+	}
+
+	// 内置 ghcr mirror
+	if len(cfg.Mirrors.Ghcr) == 0 {
+		cfg.Mirrors.Ghcr = []MirrorNode{
+			{URL: "https://ghcr.nju.edu.cn", Priority: 1, DisplayName: "nju-ghcr"},
+		}
+	}
+
+	// 内置 builtin 节点
+	if len(cfg.Builtin.Dockerhub) == 0 {
+		cfg.Builtin.Dockerhub = []string{
+			"https://docker.1ms.run",
+			"https://docker.m.daocloud.io",
+			"https://dockerproxy.net",
+			"https://hub.rat.dev",
+			"https://docker.xuanyuan.me",
+		}
+	}
+	if len(cfg.Builtin.Ghcr) == 0 {
+		cfg.Builtin.Ghcr = []string{"https://ghcr.nju.edu.cn"}
 	}
 }
 

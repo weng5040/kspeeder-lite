@@ -21,6 +21,8 @@ type Dependencies struct {
 	Config     *config.Config
 	NodeMgr    *nodemgr.Manager
 	Downloader *downloader.MultiSourceDownloader
+	// Recorder 下载日志记录器（admin API 实现 DownloadRecorder 接口）
+	Recorder registry.DownloadRecorder
 }
 
 // NewRegistryServer 创建 registry HTTPS 服务器
@@ -32,6 +34,9 @@ func NewRegistryServer(cfg *config.Config, deps *Dependencies) (*http.Server, er
 
 	// Registry API V2 路由 — 使用中间件拦截所有 /v2/ 路径
 	regHandler := registry.NewHandler(cfg, deps.NodeMgr, deps.Downloader)
+	if deps.Recorder != nil {
+		regHandler.SetRecorder(deps.Recorder)
+	}
 
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

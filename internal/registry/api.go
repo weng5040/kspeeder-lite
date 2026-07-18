@@ -4,11 +4,17 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"time"
 
 	"github.com/kspeeder/kspeeder-lite/internal/config"
 	"github.com/kspeeder/kspeeder-lite/internal/downloader"
 	"github.com/kspeeder/kspeeder-lite/internal/nodemgr"
 )
+
+// DownloadRecorder 下载记录器接口（由 admin API 实现）
+type DownloadRecorder interface {
+	RecordDownload(name string, size int64, nodeCount int, duration time.Duration, err error)
+}
 
 var (
 	manifestRe = regexp.MustCompile(`^/v2/(.+)/manifests/([^/]+)$`)
@@ -21,11 +27,17 @@ type Handler struct {
 	cfg        *config.Config
 	nodeMgr    *nodemgr.Manager
 	downloader *downloader.MultiSourceDownloader
+	recorder   DownloadRecorder
 }
 
 // NewHandler 创建 registry handler
 func NewHandler(cfg *config.Config, mgr *nodemgr.Manager, dl *downloader.MultiSourceDownloader) *Handler {
 	return &Handler{cfg: cfg, nodeMgr: mgr, downloader: dl}
+}
+
+// SetRecorder 设置下载记录器
+func (h *Handler) SetRecorder(r DownloadRecorder) {
+	h.recorder = r
 }
 
 // V2Ping GET/HEAD /v2/ — 版本握手
@@ -37,6 +49,7 @@ func (h *Handler) V2Ping(w http.ResponseWriter, r *http.Request) {
 // ServeHTTP 路由分发（用于 CONNECT 隧道内和 catch-all 路由）
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
+	slog.Debug("registry route", "path", path, "method", r.Method)
 
 	// /v2/ ping
 	if path == "/v2/" {
@@ -54,8 +67,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if m := manifestRe.FindStringSubmatch(path); m != nil {
 		name := m[1]
 		reference := m[2]
-		slog.Info("manifest request", "name", name, "ref", reference)
-		h.proxyManifest(w, r, name, reference)
+		reg := DetectRegistry(name)
+		slog.Info("manifest request", "name", name, "ref", reference, "registry", reg)
+		h.proxyManifest(w, r, name, reference, reg)
 		return
 	}
 
@@ -63,10 +77,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if m := blobRe.FindStringSubmatch(path); m != nil {
 		name := m[1]
 		digest := m[2]
-		slog.Info("blob request", "name", name, "digest", digest)
-		h.serveBlob(w, r, name, digest)
+		reg := DetectRegistry(name)
+		slog.Info("blob request", "name", name, "digest", digest, "registry", reg)
+		h.serveBlob(w, r, name, digest, reg)
 		return
 	}
 
+	slog.Warn("unmatched registry path", "path", path)
 	http.NotFound(w, r)
 }

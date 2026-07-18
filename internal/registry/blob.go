@@ -5,16 +5,19 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/kspeeder/kspeeder-lite/internal/downloader"
 )
 
-// serveBlob blob 下载入口
-// 解析 name/digest/range → 调用 downloader.Download → 流式写入 ResponseWriter
-func (h *Handler) serveBlob(w http.ResponseWriter, r *http.Request, name, digest string) {
+
+// serveBlob blob 下载入口。
+// 解析 name/digest/range → 调用 downloader.Download → 流式写入 ResponseWriter。
+// registry 参数用于选择节点来源（dockerhub/ghcr）。
+func (h *Handler) serveBlob(w http.ResponseWriter, r *http.Request, name, digest, registry string) {
 	// HEAD 请求：确认 blob 是否存在
 	if r.Method == http.MethodHead {
-		h.headBlob(w, r, name, digest)
+		h.headBlob(w, r, name, digest, registry)
 		return
 	}
 
@@ -22,7 +25,7 @@ func (h *Handler) serveBlob(w http.ResponseWriter, r *http.Request, name, digest
 	dlReq := downloader.DownloadRequest{
 		Name:     name,
 		Digest:   digest,
-		Registry: "dockerhub",
+		Registry: registry,
 	}
 
 	// 解析 Range header
@@ -36,7 +39,15 @@ func (h *Handler) serveBlob(w http.ResponseWriter, r *http.Request, name, digest
 	}
 
 	// 多源下载
-	body, contentLength, err := h.downloader.Download(r.Context(), dlReq)
+	start := time.Now()
+	body, contentLength, nodeCount, err := h.downloader.Download(r.Context(), dlReq)
+	duration := time.Since(start)
+
+	// 记录下载日志
+	if h.recorder != nil {
+		h.recorder.RecordDownload(name, contentLength, nodeCount, duration, err)
+	}
+
 	if err != nil {
 		slog.Error("blob download failed", "name", name, "digest", digest, "error", err)
 		http.Error(w, "download failed", http.StatusBadGateway)
@@ -64,8 +75,8 @@ func (h *Handler) serveBlob(w http.ResponseWriter, r *http.Request, name, digest
 }
 
 // headBlob HEAD 请求处理
-func (h *Handler) headBlob(w http.ResponseWriter, r *http.Request, name, digest string) {
-	nodes := h.nodeMgr.SelectForBlob("dockerhub", 0, 1)
+func (h *Handler) headBlob(w http.ResponseWriter, r *http.Request, name, digest, registry string) {
+	nodes := h.nodeMgr.SelectForBlob(registry, 0, 1)
 	if len(nodes) == 0 {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -79,6 +90,11 @@ func (h *Handler) headBlob(w http.ResponseWriter, r *http.Request, name, digest 
 		slog.Error("create head blob request", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
+	}
+
+	// 如果节点有 token，添加认证头
+	if node.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+node.Token)
 	}
 
 	resp, err := http.DefaultClient.Do(req)

@@ -11,7 +11,9 @@ import (
 
 // TokenService Docker registry token 服务
 type TokenService struct {
-	cache *tokenCache
+	cache      *tokenCache
+	ghcrTokens map[string]string // key: "ghcr:"+name, value: PAT
+	ghcrMu     sync.RWMutex
 }
 
 // tokenCache token 缓存
@@ -31,6 +33,7 @@ func NewTokenService() *TokenService {
 		cache: &tokenCache{
 			tokens: make(map[string]*tokenEntry),
 		},
+		ghcrTokens: make(map[string]string),
 	}
 }
 
@@ -98,4 +101,38 @@ func (t *TokenService) fetchToken(ctx context.Context, name string) (string, int
 	}
 
 	return result.Token, expiresIn, nil
+}
+
+// SetGHCRToken 设置 ghcr PAT token（从配置加载时调用）
+func (t *TokenService) SetGHCRToken(name, pat string) {
+	t.ghcrMu.Lock()
+	defer t.ghcrMu.Unlock()
+	key := "ghcr:" + name
+	t.ghcrTokens[key] = pat
+}
+
+// GetGHCRToken 获取 ghcr PAT token。
+// 直接返回 PAT 作为 Bearer token（ghcr 直接使用 PAT，无需 exchange）。
+// 对于公共仓库的匿名访问（无 token 配置），返回空字符串。
+func (t *TokenService) GetGHCRToken(ctx context.Context, name string) (string, error) {
+	key := "ghcr:" + name
+
+	// 精确匹配
+	t.ghcrMu.RLock()
+	if pat, ok := t.ghcrTokens[key]; ok {
+		t.ghcrMu.RUnlock()
+		return pat, nil
+	}
+	t.ghcrMu.RUnlock()
+
+	// 通配符：空名称代表全局 ghcr token
+	t.ghcrMu.RLock()
+	if pat, ok := t.ghcrTokens["ghcr:"]; ok {
+		t.ghcrMu.RUnlock()
+		return pat, nil
+	}
+	t.ghcrMu.RUnlock()
+
+	// 无 token，尝试匿名访问
+	return "", nil
 }
