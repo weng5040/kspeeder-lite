@@ -6,8 +6,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/kspeeder/kspeeder-lite/internal/config"
-	"github.com/kspeeder/kspeeder-lite/internal/metrics"
+	"github.com/pullfusion/pullfusion/internal/config"
+	"github.com/pullfusion/pullfusion/internal/metrics"
 )
 
 // Manager 节点管理器

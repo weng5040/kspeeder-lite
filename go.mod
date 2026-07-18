@@ -1,4 +1,4 @@
-module github.com/kspeeder/kspeeder-lite
+module github.com/pullfusion/pullfusion
 
 go 1.22
 

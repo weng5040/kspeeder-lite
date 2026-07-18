@@ -6,7 +6,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o kspeeder-lite ./cmd/kspeeder-lite/
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o pullfusion ./cmd/pullfusion/
 
 FROM alpine:3.20
 
@@ -14,7 +14,7 @@ RUN apk add --no-cache ca-certificates tzdata
 ENV TZ=Asia/Shanghai
 
 WORKDIR /app
-COPY --from=builder /build/kspeeder-lite .
+COPY --from=builder /build/pullfusion .
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

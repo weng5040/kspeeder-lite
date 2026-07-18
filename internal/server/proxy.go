@@ -15,10 +15,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
-	"github.com/kspeeder/kspeeder-lite/internal/admin"
-	"github.com/kspeeder/kspeeder-lite/internal/config"
-	"github.com/kspeeder/kspeeder-lite/internal/metrics"
-	"github.com/kspeeder/kspeeder-lite/internal/registry"
+	"github.com/pullfusion/pullfusion/internal/admin"
+	"github.com/pullfusion/pullfusion/internal/config"
+	"github.com/pullfusion/pullfusion/internal/metrics"
+	"github.com/pullfusion/pullfusion/internal/registry"
 )
 
 // NewConnectProxy 创建 CONNECT 代理服务器

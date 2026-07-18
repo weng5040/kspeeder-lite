@@ -11,14 +11,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kspeeder/kspeeder-lite/internal/admin"
-	"github.com/kspeeder/kspeeder-lite/internal/cache"
-	"github.com/kspeeder/kspeeder-lite/internal/config"
-	"github.com/kspeeder/kspeeder-lite/internal/downloader"
-	"github.com/kspeeder/kspeeder-lite/internal/metrics"
-	"github.com/kspeeder/kspeeder-lite/internal/nodemgr"
-	"github.com/kspeeder/kspeeder-lite/internal/server"
-	"github.com/kspeeder/kspeeder-lite/pkg/version"
+	"github.com/pullfusion/pullfusion/internal/admin"
+	"github.com/pullfusion/pullfusion/internal/cache"
+	"github.com/pullfusion/pullfusion/internal/config"
+	"github.com/pullfusion/pullfusion/internal/downloader"
+	"github.com/pullfusion/pullfusion/internal/metrics"
+	"github.com/pullfusion/pullfusion/internal/nodemgr"
+	"github.com/pullfusion/pullfusion/internal/server"
+	"github.com/pullfusion/pullfusion/pkg/version"
 )
 
 func main() {
@@ -29,7 +29,7 @@ func main() {
 		*configPath = envConfig
 	}
 
-	slog.Info("kspeeder-lite starting", "version", version.Version, "config", *configPath)
+	slog.Info("pullfusion starting", "version", version.Version, "config", *configPath)
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
@@ -129,5 +129,5 @@ func main() {
 	registrySrv.Shutdown(shutdownCtx)
 	proxySrv.Shutdown(shutdownCtx)
 
-	slog.Info("kspeeder-lite stopped")
+	slog.Info("pullfusion stopped")
 }

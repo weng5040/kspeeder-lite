@@ -1,4 +1,4 @@
-# kspeeder-lite 管理 API 文档
+# pullfusion 管理 API 文档
 
 ## 基础信息
 
@@ -239,29 +239,29 @@ curl http://localhost:5003/metrics
 
 | 指标名称 | 类型 | 标签 | 说明 |
 |---------|------|------|------|
-| `kspeeder_blob_downloads_total` | Counter | `registry`, `status` | blob 下载总数，status=success/error |
-| `kspeeder_blob_download_duration_seconds` | Histogram | `registry` | blob 下载耗时分布 (0.1s ~ 819.2s) |
-| `kspeeder_blob_download_bytes` | Counter | — | 已下载总字节数 |
-| `kspeeder_node_speed_mbps` | Gauge | `node` | 各节点当前测速结果 (Mbps) |
-| `kspeeder_node_health` | Gauge | `node` | 节点健康状态 (1=健康, 0=熔断) |
-| `kspeeder_node_inflight` | Gauge | `node` | 节点当前并发下载数 |
-| `kspeeder_active_downloads` | Gauge | — | 当前全局活跃下载数 |
-| `kspeeder_config_reloads_total` | Counter | — | 配置重载总次数 |
+| `pullfusion_blob_downloads_total` | Counter | `registry`, `status` | blob 下载总数，status=success/error |
+| `pullfusion_blob_download_duration_seconds` | Histogram | `registry` | blob 下载耗时分布 (0.1s ~ 819.2s) |
+| `pullfusion_blob_download_bytes` | Counter | — | 已下载总字节数 |
+| `pullfusion_node_speed_mbps` | Gauge | `node` | 各节点当前测速结果 (Mbps) |
+| `pullfusion_node_health` | Gauge | `node` | 节点健康状态 (1=健康, 0=熔断) |
+| `pullfusion_node_inflight` | Gauge | `node` | 节点当前并发下载数 |
+| `pullfusion_active_downloads` | Gauge | — | 当前全局活跃下载数 |
+| `pullfusion_config_reloads_total` | Counter | — | 配置重载总次数 |
 
 ### 常用 PromQL 查询
 
 ```promql
 # 下载成功率
-sum(kspeeder_blob_downloads_total{status="success"}) / sum(kspeeder_blob_downloads_total)
+sum(pullfusion_blob_downloads_total{status="success"}) / sum(pullfusion_blob_downloads_total)
 
 # 下载速率 (bytes/s)
-rate(kspeeder_blob_download_bytes[5m])
+rate(pullfusion_blob_download_bytes[5m])
 
 # 不健康节点数
-count(kspeeder_node_health == 0)
+count(pullfusion_node_health == 0)
 
 # P99 下载耗时
-histogram_quantile(0.99, rate(kspeeder_blob_download_duration_seconds_bucket[5m]))
+histogram_quantile(0.99, rate(pullfusion_blob_download_duration_seconds_bucket[5m]))
 ```
 
 ---

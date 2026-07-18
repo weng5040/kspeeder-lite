@@ -6,9 +6,9 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/kspeeder/kspeeder-lite/internal/config"
-	"github.com/kspeeder/kspeeder-lite/internal/downloader"
-	"github.com/kspeeder/kspeeder-lite/internal/nodemgr"
+	"github.com/pullfusion/pullfusion/internal/config"
+	"github.com/pullfusion/pullfusion/internal/downloader"
+	"github.com/pullfusion/pullfusion/internal/nodemgr"
 )
 
 // DownloadRecorder 下载记录器接口（由 admin API 实现）

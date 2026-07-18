@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/kspeeder/kspeeder-lite/internal/downloader"
+	"github.com/pullfusion/pullfusion/internal/downloader"
 )
 
 

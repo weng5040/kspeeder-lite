@@ -1,6 +1,6 @@
 package downloader
 
-import "github.com/kspeeder/kspeeder-lite/internal/nodemgr"
+import "github.com/pullfusion/pullfusion/internal/nodemgr"
 
 // Chunker 分块管理器——按节点权重将下载范围拆分为多个分块
 type Chunker struct {

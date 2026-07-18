@@ -6,7 +6,7 @@ import (
 	"io"
 	"sort"
 
-	"github.com/kspeeder/kspeeder-lite/internal/nodemgr"
+	"github.com/pullfusion/pullfusion/internal/nodemgr"
 )
 
 // mergeChunks 按 offset 排序后顺序合并分块，写入 w。

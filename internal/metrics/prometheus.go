@@ -10,7 +10,7 @@ import (
 var (
 	BlobDownloadsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "kspeeder_blob_downloads_total",
+			Name: "pullfusion_blob_downloads_total",
 			Help: "Total number of blob downloads",
 		},
 		[]string{"registry", "status"},
@@ -18,7 +18,7 @@ var (
 
 	BlobDownloadDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "kspeeder_blob_download_duration_seconds",
+			Name:    "pullfusion_blob_download_duration_seconds",
 			Help:    "Blob download duration distribution",
 			Buckets: prometheus.ExponentialBuckets(0.1, 2, 12),
 		},
@@ -27,14 +27,14 @@ var (
 
 	BlobDownloadBytes = prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name: "kspeeder_blob_download_bytes",
+			Name: "pullfusion_blob_download_bytes",
 			Help: "Total bytes downloaded",
 		},
 	)
 
 	NodeSpeed = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "kspeeder_node_speed_mbps",
+			Name: "pullfusion_node_speed_mbps",
 			Help: "Node current speed in Mbps",
 		},
 		[]string{"node"},
@@ -42,7 +42,7 @@ var (
 
 	NodeHealth = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "kspeeder_node_health",
+			Name: "pullfusion_node_health",
 			Help: "Node health status (1=healthy, 0=unhealthy)",
 		},
 		[]string{"node"},
@@ -50,7 +50,7 @@ var (
 
 	NodeInflight = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "kspeeder_node_inflight",
+			Name: "pullfusion_node_inflight",
 			Help: "Node current inflight downloads",
 		},
 		[]string{"node"},
@@ -58,14 +58,14 @@ var (
 
 	ActiveDownloads = prometheus.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "kspeeder_active_downloads",
+			Name: "pullfusion_active_downloads",
 			Help: "Current active downloads",
 		},
 	)
 
 	ConfigReloadsTotal = prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name: "kspeeder_config_reloads_total",
+			Name: "pullfusion_config_reloads_total",
 			Help: "Total config reloads",
 		},
 	)
@@ -73,21 +73,21 @@ var (
 	// 缓存指标
 	CacheHitsTotal = prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name: "kspeeder_cache_hits_total",
+			Name: "pullfusion_cache_hits_total",
 			Help: "Total cache hits",
 		},
 	)
 
 	CacheMissesTotal = prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name: "kspeeder_cache_misses_total",
+			Name: "pullfusion_cache_misses_total",
 			Help: "Total cache misses",
 		},
 	)
 
 	CacheSizeBytes = prometheus.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "kspeeder_cache_size_bytes",
+			Name: "pullfusion_cache_size_bytes",
 			Help: "Current cache size in bytes",
 		},
 	)

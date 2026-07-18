@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kspeeder/kspeeder-lite/internal/config"
-	"github.com/kspeeder/kspeeder-lite/internal/downloader"
-	"github.com/kspeeder/kspeeder-lite/internal/nodemgr"
-	"github.com/kspeeder/kspeeder-lite/internal/registry"
+	"github.com/pullfusion/pullfusion/internal/config"
+	"github.com/pullfusion/pullfusion/internal/downloader"
+	"github.com/pullfusion/pullfusion/internal/nodemgr"
+	"github.com/pullfusion/pullfusion/internal/registry"
 )
 
 // TestV2Ping 测试 /v2/ 握手

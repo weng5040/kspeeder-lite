@@ -21,27 +21,27 @@ const (
 )
 
 // TestDockerPull 完整 docker pull 流程测试
-// 需要 Docker daemon 和 kspeeder-lite 服务运行中
+// 需要 Docker daemon 和 pullfusion 服务运行中
 func TestDockerPull(t *testing.T) {
-	t.Skip("e2e test requires Docker daemon and running kspeeder-lite service")
+	t.Skip("e2e test requires Docker daemon and running pullfusion service")
 
 	// 检查 docker 可用性
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("docker not found, skipping e2e test")
 	}
 
-	// 检查 kspeeder-lite 是否运行
+	// 检查 pullfusion 是否运行
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 	}
 
 	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/healthz", proxyPort))
 	if err != nil {
-		t.Skipf("kspeeder-lite not running on port %d: %v", proxyPort, err)
+		t.Skipf("pullfusion not running on port %d: %v", proxyPort, err)
 	}
 	resp.Body.Close()
 
-	t.Log("kspeeder-lite is running, performing docker pull test")
+	t.Log("pullfusion is running, performing docker pull test")
 
 	// 清理旧镜像
 	exec.Command("docker", "rmi", "-f", "alpine:latest").Run()
@@ -120,14 +120,14 @@ func TestMetricsEndpoint(t *testing.T) {
 
 	// 验证必需的 metrics 存在
 	requiredMetrics := []string{
-		"kspeeder_blob_downloads_total",
-		"kspeeder_blob_download_duration_seconds",
-		"kspeeder_blob_download_bytes",
-		"kspeeder_node_speed_mbps",
-		"kspeeder_node_health",
-		"kspeeder_node_inflight",
-		"kspeeder_active_downloads",
-		"kspeeder_config_reloads_total",
+		"pullfusion_blob_downloads_total",
+		"pullfusion_blob_download_duration_seconds",
+		"pullfusion_blob_download_bytes",
+		"pullfusion_node_speed_mbps",
+		"pullfusion_node_health",
+		"pullfusion_node_inflight",
+		"pullfusion_active_downloads",
+		"pullfusion_config_reloads_total",
 	}
 
 	for _, m := range requiredMetrics {
@@ -144,7 +144,7 @@ func TestBuildAndRun(t *testing.T) {
 	t.Skip("e2e test: requires building and running the service")
 
 	// 构建
-	buildCmd := exec.Command("go", "build", "-o", "bin/kspeeder-lite", "./cmd/kspeeder-lite/")
+	buildCmd := exec.Command("go", "build", "-o", "bin/pullfusion", "./cmd/pullfusion/")
 	buildCmd.Dir = "../.."
 	if output, err := buildCmd.CombinedOutput(); err != nil {
 		t.Fatalf("build failed: %v\n%s", err, output)
@@ -154,11 +154,11 @@ func TestBuildAndRun(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	runCmd := exec.CommandContext(ctx, "./bin/kspeeder-lite", "--config", "configs/nodes.sample.yaml")
+	runCmd := exec.CommandContext(ctx, "./bin/pullfusion", "--config", "configs/nodes.sample.yaml")
 	runCmd.Dir = "../.."
 
 	if err := runCmd.Start(); err != nil {
-		t.Fatalf("failed to start kspeeder-lite: %v", err)
+		t.Fatalf("failed to start pullfusion: %v", err)
 	}
 
 	// 等待启动

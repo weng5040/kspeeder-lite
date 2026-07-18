@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/kspeeder/kspeeder-lite/internal/config"
+	"github.com/pullfusion/pullfusion/internal/config"
 )
 
 // proxyManifest 单节点 manifest 代理。

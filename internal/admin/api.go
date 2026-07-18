@@ -8,8 +8,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/kspeeder/kspeeder-lite/internal/downloader"
-	"github.com/kspeeder/kspeeder-lite/internal/nodemgr"
+	"github.com/pullfusion/pullfusion/internal/downloader"
+	"github.com/pullfusion/pullfusion/internal/nodemgr"
 )
 
 // ReloadFunc 配置热加载回调

@@ -1,4 +1,4 @@
-# kspeeder-lite 部署指南
+# pullfusion 部署指南
 
 ## 环境要求
 
@@ -17,8 +17,8 @@
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/kspeeder/kspeeder-lite.git
-cd kspeeder-lite
+git clone https://github.com/pullfusion/pullfusion.git
+cd pullfusion
 
 # 2. 准备配置目录和缓存目录
 mkdir -p docker/config docker/cache
@@ -43,24 +43,24 @@ docker compose logs -f
 
 ### 方式 A：registry-mirror 模式
 
-在 dockerd 配置中添加 kspeeder-lite 作为 mirror：
+在 dockerd 配置中添加 pullfusion 作为 mirror：
 
 ```json
 // /etc/docker/daemon.json
 {
-  "registry-mirrors": ["https://<kspeeder-ip>:5443"],
-  "insecure-registries": ["<kspeeder-ip>:5443"]
+  "registry-mirrors": ["https://<pullfusion-ip>:5443"],
+  "insecure-registries": ["<pullfusion-ip>:5443"]
 }
 ```
 
 适用场景：
-- kspeeder-lite 在同一台机器或内网
+- pullfusion 在同一台机器或内网
 - 只需 dockerhub 加速
 - 简单直接，无需修改代理设置
 
 ### 方式 B：CONNECT 代理模式（推荐）
 
-通过 HTTPS_PROXY 将 dockerd 的 registry 流量指向 kspeeder-lite 的 CONNECT 隧道：
+通过 HTTPS_PROXY 将 dockerd 的 registry 流量指向 pullfusion 的 CONNECT 隧道：
 
 ```json
 // /etc/docker/daemon.json
@@ -72,8 +72,8 @@ docker compose logs -f
 ```ini
 # /etc/systemd/system/docker.service.d/proxy.conf
 [Service]
-Environment="HTTP_PROXY=http://<kspeeder-ip>:5003"
-Environment="HTTPS_PROXY=http://<kspeeder-ip>:5003"
+Environment="HTTP_PROXY=http://<pullfusion-ip>:5003"
+Environment="HTTPS_PROXY=http://<pullfusion-ip>:5003"
 Environment="NO_PROXY=127.0.0.1,localhost"
 ```
 
@@ -96,8 +96,8 @@ sudo systemctl restart docker
 docker pull nginx:latest
 docker pull alpine:latest
 
-# 查看 kspeeder-lite 日志确认流量经过代理
-docker compose logs kspeeder-lite | grep "blob request"
+# 查看 pullfusion 日志确认流量经过代理
+docker compose logs pullfusion | grep "blob request"
 ```
 
 ## 群晖 / OpenWrt / 软路由特殊配置
@@ -118,10 +118,10 @@ sudo vim /var/packages/Docker/etc/dockerd.json
 ### OpenWrt / 软路由
 
 ```yaml
-# docker-compose.yml（放在 /opt/kspeeder-lite/docker/）
+# docker-compose.yml（放在 /opt/pullfusion/docker/）
 # 注意 OpenWrt 上可能需要映射 /etc/localtime
 services:
-  kspeeder-lite:
+  pullfusion:
     # ...
     volumes:
       - ./config:/config
@@ -138,7 +138,7 @@ docker compose up -d
 ```
 
 **软路由特别提示：**
-- kspeeder-lite 推荐部署在软路由上，局域网内所有设备共享加速
+- pullfusion 推荐部署在软路由上，局域网内所有设备共享加速
 - 如果软路由内存有限（< 512MB），建议调整 `max_concurrent_global: 16`
 - 外挂 U 盘/SATA 硬盘作为缓存目录（`/cache` 映射）
 
@@ -206,7 +206,7 @@ mirrors:
 
 ## 自签证书处理
 
-kspeeder-lite 默认生成自签证书，有效期 1 年。
+pullfusion 默认生成自签证书，有效期 1 年。
 
 ### registry-mirror 模式下的证书问题
 
@@ -214,22 +214,22 @@ kspeeder-lite 默认生成自签证书，有效期 1 年。
 
 ```json
 {
-  "insecure-registries": ["<kspeeder-ip>:5443"]
+  "insecure-registries": ["<pullfusion-ip>:5443"]
 }
 ```
 
-或者将 kspeeder-lite 的自签 CA 证书导入系统：
+或者将 pullfusion 的自签 CA 证书导入系统：
 
 ```bash
 # 从容器中提取自签证书
-docker compose exec kspeeder-lite cat /app/cert.pem > /tmp/kspeeder-ca.pem
+docker compose exec pullfusion cat /app/cert.pem > /tmp/pullfusion-ca.pem
 
 # Debian/Ubuntu
-sudo cp /tmp/kspeeder-ca.pem /usr/local/share/ca-certificates/kspeeder.crt
+sudo cp /tmp/pullfusion-ca.pem /usr/local/share/ca-certificates/pullfusion.crt
 sudo update-ca-certificates
 
 # CentOS/RHEL
-sudo cp /tmp/kspeeder-ca.pem /etc/pki/ca-trust/source/anchors/
+sudo cp /tmp/pullfusion-ca.pem /etc/pki/ca-trust/source/anchors/
 sudo update-ca-trust
 ```
 
@@ -246,7 +246,7 @@ server:
 
 ### CONNECT 代理模式 — 无需处理证书
 
-使用 CONNECT 代理模式时，dockerd 直接与上游 registry 通信，kspeeder-lite 作为透明隧道，**无需配置 `insecure-registries` 或导入证书**。推荐使用此模式。
+使用 CONNECT 代理模式时，dockerd 直接与上游 registry 通信，pullfusion 作为透明隧道，**无需配置 `insecure-registries` 或导入证书**。推荐使用此模式。
 
 ## 升级与回滚
 
@@ -254,7 +254,7 @@ server:
 
 ```bash
 # 1. 拉取最新镜像
-cd /opt/kspeeder-lite
+cd /opt/pullfusion
 git pull
 
 # 2. 重建容器（保留配置和缓存）
@@ -270,7 +270,7 @@ docker compose logs -f --tail=20
 
 ```bash
 # 1. 切换到指定版本
-cd /opt/kspeeder-lite
+cd /opt/pullfusion
 git checkout v0.1.0
 
 # 2. 重建并启动
@@ -293,7 +293,7 @@ docker compose up -d
            ▼                                             ▼
 ┌──────────────────────┐                    ┌──────────────────────────────┐
 │  dockerd 直接连接     │                    │  dockerd 通过 HTTPS_PROXY   │
-│  kspeeder:5443       │                    │  连接 kspeeder:5003          │
+│  pullfusion:5443       │                    │  连接 pullfusion:5003          │
 │  (HTTPS, 需配置       │                    │  (HTTP CONNECT 隧道,         │
 │   insecure-registry) │                    │   无需修改证书配置)           │
 └──────────┬───────────┘                    └────────────┬─────────────────┘
@@ -302,7 +302,7 @@ docker compose up -d
                               │
                               ▼
               ┌───────────────────────────────┐
-              │         kspeeder-lite         │
+              │         pullfusion         │
               │                               │
               │  ┌─────────────────────────┐  │
               │  │      负载均衡器          │  │

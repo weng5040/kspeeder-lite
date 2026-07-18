@@ -9,11 +9,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
-	"github.com/kspeeder/kspeeder-lite/internal/config"
-	"github.com/kspeeder/kspeeder-lite/internal/downloader"
-	"github.com/kspeeder/kspeeder-lite/internal/nodemgr"
-	"github.com/kspeeder/kspeeder-lite/internal/registry"
-	"github.com/kspeeder/kspeeder-lite/internal/tlsutil"
+	"github.com/pullfusion/pullfusion/internal/config"
+	"github.com/pullfusion/pullfusion/internal/downloader"
+	"github.com/pullfusion/pullfusion/internal/nodemgr"
+	"github.com/pullfusion/pullfusion/internal/registry"
+	"github.com/pullfusion/pullfusion/internal/tlsutil"
 )
 
 // Dependencies 服务器依赖

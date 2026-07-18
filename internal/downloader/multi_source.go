@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/kspeeder/kspeeder-lite/internal/nodemgr"
+	"github.com/pullfusion/pullfusion/internal/nodemgr"
 )
 
 // Range 下载区间

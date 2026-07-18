@@ -167,26 +167,26 @@ func applyDefaults(cfg *Config) {
 
 // applyEnvOverrides 环境变量覆盖
 func applyEnvOverrides(cfg *Config) {
-	if v := os.Getenv("KS_REGISTRY_PORT"); v != "" {
+	if v := os.Getenv("PF_REGISTRY_PORT"); v != "" {
 		if p, err := strconv.Atoi(v); err == nil {
 			cfg.Server.RegistryPort = p
 		}
 	}
-	if v := os.Getenv("KS_PROXY_PORT"); v != "" {
+	if v := os.Getenv("PF_PROXY_PORT"); v != "" {
 		if p, err := strconv.Atoi(v); err == nil {
 			cfg.Server.ProxyPort = p
 		}
 	}
-	if v := os.Getenv("KS_PROXY_AUTH"); v != "" {
+	if v := os.Getenv("PF_PROXY_AUTH"); v != "" {
 		cfg.Server.ProxyAuth = v
 	}
-	if v := os.Getenv("KS_REGISTRY_DOMAIN"); v != "" {
+	if v := os.Getenv("PF_REGISTRY_DOMAIN"); v != "" {
 		cfg.Server.RegistryDomain = v
 	}
-	if v := os.Getenv("KS_TLS_CERT"); v != "" {
+	if v := os.Getenv("PF_TLS_CERT"); v != "" {
 		cfg.Server.TLS.Cert = v
 	}
-	if v := os.Getenv("KS_TLS_KEY"); v != "" {
+	if v := os.Getenv("PF_TLS_KEY"); v != "" {
 		cfg.Server.TLS.Key = v
 	}
 }

@@ -28,7 +28,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: kspeeder/kspeeder-lite
+          images: pullfusion/pullfusion
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}

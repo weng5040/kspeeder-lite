@@ -5,7 +5,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
-	"github.com/kspeeder/kspeeder-lite/internal/metrics"
+	"github.com/pullfusion/pullfusion/internal/metrics"
 )
 
 // NodeManager 节点管理器接口（避免循环依赖）

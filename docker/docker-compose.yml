@@ -1,9 +1,9 @@
 services:
-  kspeeder-lite:
+  pullfusion:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    container_name: kspeeder-lite
+    container_name: pullfusion
     ports:
       - "5443:5443"
       - "5003:5003"

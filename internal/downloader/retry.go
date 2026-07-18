@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/kspeeder/kspeeder-lite/internal/nodemgr"
+	"github.com/pullfusion/pullfusion/internal/nodemgr"
 )
 
 // retryChunk 为重试下载分块，切换到健康节点并基于 Range 从 chunk.Start 续传。

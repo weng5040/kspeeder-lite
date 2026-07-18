@@ -4,7 +4,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/kspeeder/kspeeder-lite/internal/metrics"
+	"github.com/pullfusion/pullfusion/internal/metrics"
 )
 
 // 全局下载统计（供 admin API 使用）
