@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/pullfusion/pullfusion/internal/nodemgr"
 	"github.com/pullfusion/pullfusion/internal/config"
 )
 
@@ -13,7 +14,25 @@ import (
 // 选1个健康节点 → 转发 GET/HEAD → 透传响应 headers 和 body。
 // registry 参数用于选择节点来源（dockerhub/ghcr）。
 func (h *Handler) proxyManifest(w http.ResponseWriter, r *http.Request, name, reference, registry string) {
-	nodes := h.nodeMgr.SelectForBlob(registry, 0, 1)
+		// Manifest: prefer fast nodes (Speed>0, from config) over fetched nodes (Speed=0, priority>=50)
+	allNodes := h.nodeMgr.List()
+	var fastNodes []*nodemgr.Node
+	for _, n := range allNodes {
+		if n.Enabled && n.Healthy && n.Speed > 0 {
+			for _, t := range n.Targets {
+				if t == registry {
+					fastNodes = append(fastNodes, n)
+					break
+				}
+			}
+		}
+	}
+	var nodes []*nodemgr.Node
+	if len(fastNodes) > 0 {
+		nodes = fastNodes[:min(len(fastNodes), 1)]
+	} else {
+		nodes = h.nodeMgr.SelectForBlob(registry, 0, 1)
+	}
 	if len(nodes) == 0 {
 		http.Error(w, "no healthy nodes available", http.StatusBadGateway)
 		return
