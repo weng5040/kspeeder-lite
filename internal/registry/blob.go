@@ -95,6 +95,10 @@ func (h *Handler) headBlob(w http.ResponseWriter, r *http.Request, name, digest,
 	// 如果节点有 token，添加认证头
 	if node.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+node.Token)
+	} else if h.tokenSvc != nil && registry == "dockerhub" {
+		if tok, err := h.tokenSvc.GetToken(r.Context(), registry, name); err == nil && tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
 	}
 
 	resp, err := http.DefaultClient.Do(req)
