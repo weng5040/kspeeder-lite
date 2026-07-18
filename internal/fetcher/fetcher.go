@@ -125,7 +125,7 @@ func determineTargets(item ProxyItem) []string {
 }
 
 // defaultTypes 默认抓取的节点类型
-var defaultTypes = []string{"clash", "surge", "shadowrocket", "sing-box"}
+var defaultTypes = []string{"hub", "ghcr"}
 
 // FetchAndMerge 入口函数：从远程源抓取并合并到管理器
 func FetchAndMerge(ctx context.Context, mgr *nodemgr.Manager) (*FetchResult, error) {
