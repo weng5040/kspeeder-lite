@@ -41,7 +41,7 @@ r.Get("/dashboard", adminAPI.ServeDashboard)
 	r.Post("/admin/config/reload", adminAPI.ReloadConfig)
 
 	// CONNECT 代理处理器
-	regHandler := registry.NewHandler(cfg, deps.NodeMgr, deps.Downloader)
+	regHandler := registry.NewHandler(cfg, deps.NodeMgr, deps.Downloader, deps.TokenService)
 	proxyHandler := &connectHandler{
 		cfg:        cfg,
 		regHandler: regHandler,

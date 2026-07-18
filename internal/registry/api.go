@@ -8,6 +8,7 @@ import (
 
 	"github.com/pullfusion/pullfusion/internal/config"
 	"github.com/pullfusion/pullfusion/internal/downloader"
+	"github.com/pullfusion/pullfusion/internal/auth"
 	"github.com/pullfusion/pullfusion/internal/nodemgr"
 )
 
@@ -27,12 +28,13 @@ type Handler struct {
 	cfg        *config.Config
 	nodeMgr    *nodemgr.Manager
 	downloader *downloader.MultiSourceDownloader
+	tokenSvc   *auth.TokenService
 	recorder   DownloadRecorder
 }
 
 // NewHandler 创建 registry handler
-func NewHandler(cfg *config.Config, mgr *nodemgr.Manager, dl *downloader.MultiSourceDownloader) *Handler {
-	return &Handler{cfg: cfg, nodeMgr: mgr, downloader: dl}
+func NewHandler(cfg *config.Config, mgr *nodemgr.Manager, dl *downloader.MultiSourceDownloader, ts *auth.TokenService) *Handler {
+	return &Handler{cfg: cfg, nodeMgr: mgr, downloader: dl, tokenSvc: ts}
 }
 
 // SetRecorder 设置下载记录器

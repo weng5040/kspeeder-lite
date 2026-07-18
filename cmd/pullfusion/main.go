@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/pullfusion/pullfusion/internal/auth"
 	"github.com/pullfusion/pullfusion/internal/admin"
 	"github.com/pullfusion/pullfusion/internal/cache"
 	"github.com/pullfusion/pullfusion/internal/config"
@@ -38,6 +39,8 @@ func main() {
 	}
 
 	metrics.Init()
+
+	tokenSvc := auth.NewTokenService()
 
 	// 初始化 Blob 本地磁盘缓存（二次加速）
 	var blobCache *cache.Cache
@@ -74,7 +77,8 @@ func main() {
 	deps := &server.Dependencies{
 		Config:     cfg,
 		NodeMgr:    nodeMgr,
-		Downloader: dl,
+		Downloader:   dl,
+		TokenService: tokenSvc,
 		Recorder:   api,
 	}
 

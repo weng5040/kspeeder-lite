@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
+	"github.com/pullfusion/pullfusion/internal/auth"
 	"github.com/pullfusion/pullfusion/internal/config"
 	"github.com/pullfusion/pullfusion/internal/downloader"
 	"github.com/pullfusion/pullfusion/internal/nodemgr"
@@ -20,7 +21,8 @@ import (
 type Dependencies struct {
 	Config     *config.Config
 	NodeMgr    *nodemgr.Manager
-	Downloader *downloader.MultiSourceDownloader
+	Downloader   *downloader.MultiSourceDownloader
+	TokenService *auth.TokenService
 	// Recorder 下载日志记录器（admin API 实现 DownloadRecorder 接口）
 	Recorder registry.DownloadRecorder
 }
@@ -33,7 +35,7 @@ func NewRegistryServer(cfg *config.Config, deps *Dependencies) (*http.Server, er
 	r.Use(chimw.RealIP)
 
 	// Registry API V2 路由 — 使用中间件拦截所有 /v2/ 路径
-	regHandler := registry.NewHandler(cfg, deps.NodeMgr, deps.Downloader)
+	regHandler := registry.NewHandler(cfg, deps.NodeMgr, deps.Downloader, deps.TokenService)
 	if deps.Recorder != nil {
 		regHandler.SetRecorder(deps.Recorder)
 	}
