@@ -82,25 +82,20 @@ func (h *connectHandler) handleConnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 解析目标地址
-	host, port, err := net.SplitHostPort(r.Host)
+	_, port, err := net.SplitHostPort(r.Host)
 	if err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
 
 	slog.Info("CONNECT request", "host", r.Host)
-
-	// 对内建的 registry domain，走内部 handler（绕过 TLS）
-	if h.cfg.Server.RegistryDomain != "" &&
-		(host == h.cfg.Server.RegistryDomain || host == "registry-1.docker.io") &&
-		port == "443" {
+	// 任意 registry 域名的 CONNECT 都走内部 handler
+	if port == "443" {
 		h.handleRegistryTunnel(w, r)
 		return
 	}
 
-	http.Error(w, "forbidden", http.StatusForbidden)
 }
-
 // handleRegistryTunnel 处理 registry 内部隧道
 // 从 clientConn 读取 HTTP 请求，通过 registry handler 路由，写回响应
 func (h *connectHandler) handleRegistryTunnel(w http.ResponseWriter, r *http.Request) {
