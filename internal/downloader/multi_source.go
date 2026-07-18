@@ -131,6 +131,7 @@ func (d *MultiSourceDownloader) headProbe(ctx context.Context, nodes []*nodemgr.
 				return
 			}
 			resp.Body.Close()
+			slog.Info("head probe", "node", node.DisplayName, "status", resp.StatusCode, "url", blobURL)
 
 			if resp.StatusCode != http.StatusOK {
 				d.nodeMgr.MarkFailed(node)
@@ -268,6 +269,7 @@ func (d *MultiSourceDownloader) singleNodeDownload(ctx context.Context, req Down
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		resp.Body.Close()
+			slog.Info("head probe", "node", node.DisplayName, "status", resp.StatusCode, "url", blobURL)
 		d.nodeMgr.MarkFailed(node)
 		return nil, 0, fmt.Errorf("upstream returned %d", resp.StatusCode)
 	}

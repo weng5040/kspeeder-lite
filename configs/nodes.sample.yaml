@@ -1,17 +1,11 @@
 mirrors:
   dockerhub:
-    - url: https://registry-1.docker.io
+    - url: https://dockerproxy.net
       priority: 1
       display_name: dockerproxy
-    - url: https://docker.1ms.run
-      priority: 2
-      display_name: 1ms
-    - url: https://docker.m.daocloud.io
-      priority: 3
-      display_name: daocloud
     - url: https://registry-1.docker.io
       priority: 99
-      display_name: dockerhub-direct
+      display_name: dockerhub
   ghcr:
     - url: https://ghcr.nju.edu.cn
       priority: 1
@@ -44,7 +38,6 @@ downloader:
 
 builtin_mirrors:
   dockerhub:
-    - https://registry-1.docker.io
-    - https://registry-1.docker.io
+    - https://dockerproxy.net
   ghcr:
     - https://ghcr.nju.edu.cn
