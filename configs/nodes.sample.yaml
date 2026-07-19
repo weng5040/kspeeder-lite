@@ -1,11 +1,8 @@
 mirrors:
   dockerhub:
     - url: https://dockerproxy.net
-      priority: 2
-      display_name: dockerproxy
-    - url: https://dockerproxy.net
       priority: 1
-      display_name: dockerhub
+      display_name: dockerproxy
   ghcr:
     - url: https://ghcr.nju.edu.cn
       priority: 1
@@ -18,11 +15,11 @@ proxies:
 server:
   registry_port: 5443
   proxy_port: 5003
-  proxy_auth: ""
+  proxy_auth: ''
   registry_domain: registry.local
   tls:
-    cert: ""
-    key: ""
+    cert: ''
+    key: ''
 
 downloader:
   max_concurrent_per_blob: 4
@@ -31,7 +28,7 @@ downloader:
   chunk_max_size: 33554432
   node_fail_threshold: 3
   speed_test_interval: 300s
-  speed_test_url: "https://github.com/linkease/istore-packages/releases/download/prebuilt/quickstart-binary-0.11.9.tar.gz"
+  speed_test_url: 'https://github.com/linkease/istore-packages/releases/download/prebuilt/quickstart-binary-0.11.9.tar.gz'
   cache_enabled: true
   cache_dir: /cache
   cache_max_size: 10737418240

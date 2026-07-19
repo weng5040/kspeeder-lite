@@ -3,6 +3,7 @@ package downloader
 import (
 	"context"
 	"fmt"
+	"time"
 	"io"
 	"log/slog"
 	"net/http"
@@ -124,7 +125,7 @@ func (d *MultiSourceDownloader) headProbe(ctx context.Context, nodes []*nodemgr.
 				httpReq.Header.Set("Authorization", "Bearer "+node.Token)
 			}
 
-			resp, err := http.DefaultClient.Do(httpReq)
+			resp, err := (&http.Client{Timeout: 5 * time.Minute}).Do(httpReq)
 			if err != nil {
 				d.nodeMgr.MarkFailed(node)
 				results <- probeResult{node: node, ok: false}
@@ -262,7 +263,7 @@ func (d *MultiSourceDownloader) singleNodeDownload(ctx context.Context, req Down
 	d.nodeMgr.IncrInflight(node)
 	defer d.nodeMgr.DecrInflight(node)
 
-	resp, err := http.DefaultClient.Do(httpReq)
+	resp, err := (&http.Client{Timeout: 5 * time.Minute}).Do(httpReq)
 	if err != nil {
 		d.nodeMgr.MarkFailed(node)
 		return nil, 0, err

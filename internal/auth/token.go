@@ -84,7 +84,7 @@ func (t *TokenService) fetchToken(ctx context.Context, name string) (string, int
 	}
 
 	var result struct {
-		Token     string `json:"token"`
+		Token     string `json:"access_token"`
 		ExpiresIn int    `json:"expires_in"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
