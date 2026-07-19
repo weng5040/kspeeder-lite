@@ -16,6 +16,7 @@ type BalanceWeights struct {
 	Speed    float64
 	Health   float64
 	Load     float64
+	Latency  float64 // 延迟评分权重
 }
 
 // NewDefaultBalancer 创建默认权重均衡器
@@ -23,9 +24,10 @@ func NewDefaultBalancer() *Balancer {
 	return &Balancer{
 		weights: BalanceWeights{
 			Priority: 0.3,
-			Speed:    0.4,
-			Health:   0.2,
-			Load:     0.1,
+			Speed:    0.3,
+			Latency:  0.2,
+			Health:   0.15,
+			Load:     0.05,
 		},
 	}
 }
@@ -39,11 +41,13 @@ func (b *Balancer) Score(node *Node) float64 {
 	speedScore := normalizeSpeed(node.Speed)
 	healthScore := 1.0 / (1.0 + float64(node.FailCount))
 	loadScore := 1.0 / (1.0 + float64(node.InFlight))
+	latencyScore := normalizeLatency(node.Latency)
 
 	return b.weights.Priority*priorityScore +
 		b.weights.Speed*speedScore +
 		b.weights.Health*healthScore +
-		b.weights.Load*loadScore
+		b.weights.Load*loadScore +
+		b.weights.Latency*latencyScore
 }
 
 // TopK 选出得分最高的 k 个节点
@@ -124,4 +128,10 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func normalizeLatency(ms float64) float64 {
+	if ms <= 0 { return 0 }
+	if ms >= 1000 { return 0 }
+	return 1.0 - ms/1000.0
 }

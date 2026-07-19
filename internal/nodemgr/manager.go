@@ -184,7 +184,24 @@ func (m *Manager) SelectForBlob(registry string, expectedSize int64, k int) []*N
 		return nil
 	}
 	if len(candidates) <= k {
-		return candidates
+		// URL dedup + diversity fill
+	seen := make(map[string]bool)
+	var unique []*Node
+	for _, nd := range candidates {
+		if !seen[nd.URL] {
+			seen[nd.URL] = true
+			unique = append(unique, nd)
+		}
+	}
+	// Fill remaining slots with other URLs
+	for _, nd := range m.nodes {
+		if len(unique) >= k { break }
+		if !nd.Enabled || !nd.Healthy || seen[nd.URL] { continue }
+		tm := len(nd.Targets) == 0
+		for _, t := range nd.Targets { if t == registry { tm = true; break } }
+		if tm { seen[nd.URL] = true; unique = append(unique, nd) }
+	}
+	return unique
 	}
 
 	return m.balancer.TopK(candidates, k)

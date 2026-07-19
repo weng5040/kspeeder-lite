@@ -25,6 +25,7 @@ type Node struct {
 Token       string // PAT token for authenticated registries (e.g. ghcr)
 
 	Speed     float64
+	Latency   float64          // ms (lower is better)
 	FailCount int
 	InFlight  int32 // atomic
 	LastCheck time.Time
