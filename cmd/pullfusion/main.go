@@ -126,9 +126,9 @@ func main() {
 				}
 				r := st.TestOne(speedtest.NodeInfo{URL: n.URL, Token: n.Token})
 				if r.Error == "" {
-					nodeMgr.RecordDownload(n.URL, r.LatencyMs, r.SpeedKBps, r.Bytes/1024, true)
+					nodeMgr.RecordMetric(n.URL, "latency", r.LatencyMs); nodeMgr.RecordMetric(n.URL, "speed", r.SpeedKBps)
 				} else {
-					nodeMgr.RecordDownload(n.URL, r.LatencyMs, 0, 0, false)
+					nodeMgr.RecordMetric(n.URL, "latency", r.LatencyMs); nodeMgr.RecordMetric(n.URL, "speed", 0)
 				}
 			}
 		}
