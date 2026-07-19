@@ -1,17 +1,5 @@
 mirrors:
-  dockerhub:
-    - url: https://docker.1ms.run
-      priority: 1
-      display_name: 1ms-docker
-    - url: https://docker.xuanyuan.me
-      priority: 2
-      display_name: xuanyuan
-    - url: https://docker.m.daocloud.io
-      priority: 3
-      display_name: daocloud
-    - url: https://docker.1panel.live
-      priority: 4
-      display_name: 1panel
+  dockerhub: []
   ghcr: []
 
 proxies:

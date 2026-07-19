@@ -132,24 +132,6 @@ func applyDefaults(cfg *Config) {
 		cfg.Downloader.SpeedTestURL = "https://github.com/linkease/istore-packages/releases/download/prebuilt/quickstart-binary-0.11.9.tar.gz"
 	}
 
-	// 内置 mirror（若用户未配置）
-	if len(cfg.Mirrors.Dockerhub) == 0 {
-		cfg.Mirrors.Dockerhub = []MirrorNode{
-			{URL: "https://docker.1ms.run", Priority: 1, DisplayName: "1ms"},
-			{URL: "https://docker.m.daocloud.io", Priority: 2, DisplayName: "daocloud"},
-			{URL: "https://dockerproxy.net", Priority: 3, DisplayName: "dockerproxy"},
-			{URL: "https://hub.rat.dev", Priority: 4, DisplayName: "ratdev"},
-			{URL: "https://docker.xuanyuan.me", Priority: 5, DisplayName: "xuanyuan"},
-		}
-	}
-
-	// 内置 ghcr mirror
-	if len(cfg.Mirrors.Ghcr) == 0 {
-		cfg.Mirrors.Ghcr = []MirrorNode{
-			{URL: "https://ghcr.nju.edu.cn", Priority: 1, DisplayName: "nju-ghcr"},
-		}
-	}
-
 	// 内置 builtin 节点
 	if len(cfg.Builtin.Dockerhub) == 0 {
 		cfg.Builtin.Dockerhub = []string{
