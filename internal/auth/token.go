@@ -66,7 +66,7 @@ func (t *TokenService) GetToken(ctx context.Context, registry, name string) (str
 
 // fetchToken 从 dockerhub auth 获取 token
 func (t *TokenService) fetchToken(ctx context.Context, name string) (string, int, error) {
-	url := fmt.Sprintf("https://auth.docker.io/token?service=registry.docker.io&scope=repository:%s:pull", name)
+	url := fmt.Sprintf("https://docker.1ms.run/openapi/v1/auth/token?service=docker.1ms.run&scope=repository:%s:pull", name)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {

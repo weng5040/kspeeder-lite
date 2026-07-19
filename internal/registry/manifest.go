@@ -6,7 +6,6 @@ import (
 	"net/http"
 )
 
-// proxyManifest proxies manifest requests through docker.1ms.run (always reachable).
 func (h *Handler) proxyManifest(w http.ResponseWriter, r *http.Request, name, reference, registry string) {
 	manifestURL := "https://docker.1ms.run/v2/" + name + "/manifests/" + reference
 
@@ -18,7 +17,16 @@ func (h *Handler) proxyManifest(w http.ResponseWriter, r *http.Request, name, re
 	}
 
 	copyHeader(req.Header, r.Header, "Accept")
-	copyHeader(req.Header, r.Header, "Authorization")
+
+	// Get token from docker.1ms.run auth if client didn't provide one
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" && registry == "dockerhub" && h.tokenSvc != nil {
+		if tok, err := h.tokenSvc.GetToken(r.Context(), registry, name); err == nil && tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+	} else if authHeader != "" {
+		req.Header.Set("Authorization", authHeader)
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
