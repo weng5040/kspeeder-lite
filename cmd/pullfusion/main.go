@@ -58,8 +58,8 @@ func main() {
 		}
 	}
 
-	metricsStore, _ := store.Open("data")
-	nodeMgr := nodemgr.NewManagerWithStore(cfg, metricsStore)
+	database, _ := store.Open("data")
+	nodeMgr := nodemgr.NewManagerWithStore(cfg, database)
 
 	// Load persisted nodes, auto-fetch if empty
 	loaded, _ := persist.Load(nodeMgr, cfg)
