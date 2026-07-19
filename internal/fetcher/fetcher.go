@@ -136,7 +136,6 @@ func MergeIntoManager(items []ProxyItem, mgr *nodemgr.Manager, existing map[stri
 		mgr.AddNode(&nodemgr.Node{
 			URL:         item.URL,
 			DisplayName: displayName,
-			Type:        nodemgr.NodeTypeMirror,
 			Priority:    50, // fetched nodes start at default priority
 			Enabled:     true,
 			Healthy:     true, // optimistic — local tests will determine real health

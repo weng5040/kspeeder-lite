@@ -69,7 +69,6 @@ func (m *Manager) loadFromDB() {
 			n := &Node{
 				URL:         dn.URL,
 				DisplayName: dn.DisplayName,
-				Type:        NodeType(dn.Type),
 				Priority:    dn.Priority,
 				Enabled:     dn.Enabled,
 				Healthy:     dn.FailCount < 5,
@@ -116,7 +115,6 @@ func (m *Manager) saveToDB() {
 		records = append(records, store.NodeRecord{
 			URL:         n.URL,
 			DisplayName: n.DisplayName,
-			Type:        string(n.Type),
 			Priority:    n.Priority,
 			Enabled:     n.Enabled,
 			Targets:     n.Targets,
@@ -305,14 +303,12 @@ func (m *Manager) GetScoredNodes() []*Node {
 func (m *Manager) initNodes(cfg *config.Config) {
 	for _, mirror := range cfg.Mirrors.Dockerhub {
 		m.nodes = append(m.nodes, &Node{
-			URL: mirror.URL, DisplayName: mirror.DisplayName, Type: NodeTypeMirror,
 			Priority: mirror.Priority, Enabled: true, Healthy: true,
 			Targets: []string{"dockerhub"}, Token: mirror.Token,
 		})
 	}
 	for _, mirror := range cfg.Mirrors.Ghcr {
 		m.nodes = append(m.nodes, &Node{
-			URL: mirror.URL, DisplayName: mirror.DisplayName, Type: NodeTypeMirror,
 			Priority: mirror.Priority, Enabled: true, Healthy: true,
 			Targets: []string{"ghcr"}, Token: mirror.Token,
 		})

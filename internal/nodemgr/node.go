@@ -2,14 +2,6 @@ package nodemgr
 
 import "sync/atomic"
 
-// NodeType defines the type of a node.
-type NodeType string
-
-const (
-	NodeTypeMirror NodeType = "mirror"
-	NodeTypeSocks5 NodeType = "socks5"
-	NodeTypeHTTP   NodeType = "http"
-)
 
 // Node represents a registry mirror or proxy node.
 // All state fields are safe for concurrent access: Score/Health use atomic,
@@ -17,7 +9,6 @@ const (
 type Node struct {
 	URL         string   `json:"url"`
 	DisplayName string   `json:"display_name"`
-	Type        NodeType `json:"type"`
 	Priority    int      `json:"priority"`
 	Enabled     bool     `json:"enabled"`
 	Targets     []string `json:"targets"`

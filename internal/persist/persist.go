@@ -16,7 +16,6 @@ const defaultFile = "data/nodes.json"
 type NodeEntry struct {
 	URL         string   `json:"url"`
 	DisplayName string   `json:"display_name"`
-	Type        string   `json:"type"`
 	Priority    int      `json:"priority"`
 	Targets     []string `json:"targets"`
 	Token       string   `json:"token,omitempty"`
@@ -36,7 +35,6 @@ func Save(mgr *nodemgr.Manager, cfg *config.Config) error {
 		entries = append(entries, NodeEntry{
 			URL:         n.URL,
 			DisplayName: n.DisplayName,
-			Type:        string(n.Type),
 			Priority:    n.Priority,
 			Targets:     n.Targets,
 			Token:       n.Token,
@@ -71,16 +69,9 @@ func Load(mgr *nodemgr.Manager, cfg *config.Config) (int, error) {
 
 	count := 0
 	for _, e := range entries {
-		nodeType := nodemgr.NodeTypeMirror
-		if e.Type == "socks5" {
-			nodeType = nodemgr.NodeTypeSocks5
-		} else if e.Type == "http" {
-			nodeType = nodemgr.NodeTypeHTTP
-		}
 		mgr.AddNode(&nodemgr.Node{
 			URL:         e.URL,
 			DisplayName: e.DisplayName,
-			Type:        nodeType,
 			Priority:    e.Priority,
 			Enabled:     true,
 			Healthy:     true,

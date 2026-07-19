@@ -18,11 +18,12 @@ type DB struct {
 	db *sql.DB
 }
 
+// ── Node public record ──
+
 // NodeRecord is a persisted node entry.
 type NodeRecord struct {
 	URL         string
 	DisplayName string
-	Type        string
 	Priority    int
 	Enabled     bool
 	Targets     []string
@@ -34,6 +35,8 @@ type NodeRecord struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
+
+// ── Metric public record ──
 
 // MetricRecord is a single scoring event for a node.
 type MetricRecord struct {
@@ -49,23 +52,22 @@ type MetricRecord struct {
 	BytesTotal int64
 }
 
-// StatsPeriod represents a time window for aggregations.
+// ── Predefined stats periods ──
+
+var (
+	Period7Day   = StatsPeriod{"7d", 7 * 86400}
+	Period15Day  = StatsPeriod{"15d", 15 * 86400}
+	Period30Day  = StatsPeriod{"30d", 30 * 86400}
+	Period180Day = StatsPeriod{"180d", 180 * 86400}
+	Period365Day = StatsPeriod{"365d", 365 * 86400}
+	AllPeriods   = []StatsPeriod{Period7Day, Period15Day, Period30Day, Period180Day, Period365Day}
+)
+
 type StatsPeriod struct {
 	Name    string
 	Seconds int64
 }
 
-// Predefined stats periods
-var (
-	Period7Day     = StatsPeriod{"7d", 7 * 86400}
-	Period15Day    = StatsPeriod{"15d", 15 * 86400}
-	Period30Day    = StatsPeriod{"30d", 30 * 86400}
-	Period180Day   = StatsPeriod{"180d", 180 * 86400}
-	Period365Day   = StatsPeriod{"365d", 365 * 86400}
-	AllPeriods     = []StatsPeriod{Period7Day, Period15Day, Period30Day, Period180Day, Period365Day}
-)
-
-// AggregatedStats holds per-node aggregated metrics for a time period.
 type AggregatedStats struct {
 	NodeURL     string  `json:"node_url"`
 	Total       int     `json:"total_requests"`
@@ -79,7 +81,8 @@ type AggregatedStats struct {
 	LastUsed    string  `json:"last_used"`
 }
 
-// Open opens (or creates) the SQLite database.
+// ── Open / migrate ──
+
 func Open(dataDir string) (*DB, error) {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
@@ -105,38 +108,42 @@ func Open(dataDir string) (*DB, error) {
 
 func (s *DB) migrate() error {
 	_, err := s.db.Exec(`
+		-- 节点配置表：每个镜像加速节点的元信息和当前状态
 		CREATE TABLE IF NOT EXISTS nodes (
-			url          TEXT PRIMARY KEY,
-			display_name TEXT NOT NULL,
-			type         TEXT DEFAULT 'mirror',
-			priority     INTEGER DEFAULT 50,
-			enabled      INTEGER DEFAULT 1,
-			targets      TEXT DEFAULT '["dockerhub"]',
-			token        TEXT DEFAULT '',
-			fail_count   INTEGER DEFAULT 0,
-			success_cnt  INTEGER DEFAULT 0,
-			latency_ms   INTEGER DEFAULT 0,
-			speed_kbps   INTEGER DEFAULT 0,
-			created_at   INTEGER NOT NULL,
-			updated_at   INTEGER NOT NULL
+			url          TEXT PRIMARY KEY,  -- 节点唯一标识（镜像站地址）
+			display_name TEXT NOT NULL,     -- 前端展示名称（来自 status.anye.xyz）
+			priority     INTEGER DEFAULT 50,-- 优先级：越小越优先，配置节点=1，抓取节点=50
+			enabled      INTEGER DEFAULT 1, -- 是否启用：1=启用 0=禁用
+			targets      TEXT DEFAULT '["dockerhub"]', -- 支持的 registry 类型（JSON 数组）
+			token        TEXT DEFAULT '',    -- 节点专用认证 token（预留）
+			fail_count   INTEGER DEFAULT 0, -- 连续失败次数，>=5 标记不健康
+			success_cnt  INTEGER DEFAULT 0, -- 累计成功次数（供 log10 评分）
+			latency_ms   INTEGER DEFAULT 0, -- 最近一次请求延迟（毫秒）
+			speed_kbps   INTEGER DEFAULT 0, -- 最近一次下载速度（KB/s）
+			created_at   INTEGER NOT NULL,  -- 首次入库时间（Unix 秒）
+			updated_at   INTEGER NOT NULL   -- 最后更新时间（Unix 秒）
 		);
 
+		-- 评分时序表：每次下载事件的完整记录，用于趋势分析和聚合统计
 		CREATE TABLE IF NOT EXISTS node_metrics (
-			id          INTEGER PRIMARY KEY AUTOINCREMENT,
-			node_url    TEXT NOT NULL REFERENCES nodes(url),
-			timestamp   INTEGER NOT NULL,
-			latency_ms  INTEGER DEFAULT 0,
-			speed_kbps  INTEGER DEFAULT 0,
-			success     INTEGER DEFAULT 0,
-			fail_count  INTEGER DEFAULT 0,
-			score       INTEGER DEFAULT 0,
-			inflight    INTEGER DEFAULT 0,
-			healthy     INTEGER DEFAULT 1,
-			bytes_total INTEGER DEFAULT 0
+			id          INTEGER PRIMARY KEY AUTOINCREMENT, -- 自增事件 ID
+			node_url    TEXT NOT NULL REFERENCES nodes(url),-- 关联的节点地址
+			timestamp   INTEGER NOT NULL,   -- 事件发生时间（Unix 秒）
+			latency_ms  INTEGER DEFAULT 0,  -- 本次请求延迟（毫秒）
+			speed_kbps  INTEGER DEFAULT 0,  -- 本次下载速度（KB/s）
+			success     INTEGER DEFAULT 0,  -- 是否成功：1=成功 0=失败
+			fail_count  INTEGER DEFAULT 0,  -- 当时的连续失败次数
+			score       INTEGER DEFAULT 0,  -- 当时的综合评分（0~10000）
+			inflight    INTEGER DEFAULT 0,  -- 当时的并发数
+			healthy     INTEGER DEFAULT 1,  -- 当时是否健康：1=健康 0=熔断
+			bytes_total INTEGER DEFAULT 0   -- 本次下载字节数
 		);
 
+		-- 按节点查询的索引
 		CREATE INDEX IF NOT EXISTS idx_metrics_url  ON node_metrics(node_url);
+		-- 按时间查询的索引（用于时间窗口聚合）
 		CREATE INDEX IF NOT EXISTS idx_metrics_time ON node_metrics(timestamp);
+		-- 节点+时间复合索引（用于单节点的趋势图）
 		CREATE INDEX IF NOT EXISTS idx_metrics_url_time ON node_metrics(node_url, timestamp);
 	`)
 	return err
@@ -157,10 +164,10 @@ func (s *DB) SaveNodes(nodes []NodeRecord) error {
 		targetsJSON, _ := json.Marshal(n.Targets)
 		_, err := tx.Exec(`
 			INSERT OR REPLACE INTO nodes
-				(url, display_name, type, priority, enabled, targets, token,
+				(url, display_name, priority, enabled, targets, token,
 				 fail_count, success_cnt, latency_ms, speed_kbps, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM nodes WHERE url=?), ?), ?)`,
-			n.URL, n.DisplayName, n.Type, n.Priority, boolToInt(n.Enabled),
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM nodes WHERE url=?), ?), ?)`,
+			n.URL, n.DisplayName, n.Priority, boolToInt(n.Enabled),
 			string(targetsJSON), n.Token, n.FailCount, n.SuccessCnt,
 			n.LatencyMs, n.SpeedKBps, n.URL, now, now,
 		)
@@ -173,7 +180,7 @@ func (s *DB) SaveNodes(nodes []NodeRecord) error {
 
 // LoadNodes reads all persisted nodes.
 func (s *DB) LoadNodes() ([]NodeRecord, error) {
-	rows, err := s.db.Query(`SELECT url, display_name, type, priority, enabled, targets, token,
+	rows, err := s.db.Query(`SELECT url, display_name, priority, enabled, targets, token,
 		fail_count, success_cnt, latency_ms, speed_kbps, created_at, updated_at FROM nodes`)
 	if err != nil {
 		return nil, err
@@ -186,7 +193,7 @@ func (s *DB) LoadNodes() ([]NodeRecord, error) {
 		var targetsJSON string
 		var enabled int
 		var createdAt, updatedAt int64
-		if err := rows.Scan(&n.URL, &n.DisplayName, &n.Type, &n.Priority, &enabled,
+		if err := rows.Scan(&n.URL, &n.DisplayName, &n.Priority, &enabled,
 			&targetsJSON, &n.Token, &n.FailCount, &n.SuccessCnt, &n.LatencyMs,
 			&n.SpeedKBps, &createdAt, &updatedAt); err != nil {
 			return nil, err
@@ -242,7 +249,6 @@ func (s *DB) LoadLatestMetrics() (map[string]MetricRecord, error) {
 
 // ─── Aggregation Queries ────────────────────────────────────
 
-// GetStats returns aggregated stats for all time periods.
 func (s *DB) GetStats() (map[string][]AggregatedStats, error) {
 	result := make(map[string][]AggregatedStats)
 	for _, p := range AllPeriods {
@@ -255,7 +261,6 @@ func (s *DB) GetStats() (map[string][]AggregatedStats, error) {
 	return result, nil
 }
 
-// GetStatsForPeriod returns aggregated stats for a specific period key.
 func (s *DB) GetStatsForPeriod(periodKey string) ([]AggregatedStats, error) {
 	for _, p := range AllPeriods {
 		if p.Name == periodKey {
@@ -301,7 +306,6 @@ func (s *DB) getStatsForPeriod(p StatsPeriod) ([]AggregatedStats, error) {
 		if lastUsed > 0 {
 			as.LastUsed = time.Unix(lastUsed, 0).Format(time.RFC3339)
 		}
-		// Extract short name from URL for display
 		as.NodeURL = extractShortName(as.NodeURL)
 		result = append(result, as)
 	}
@@ -310,7 +314,6 @@ func (s *DB) getStatsForPeriod(p StatsPeriod) ([]AggregatedStats, error) {
 
 // ─── Cleanup ────────────────────────────────────────────────
 
-// PruneMetrics removes metrics older than the given duration.
 func (s *DB) PruneMetrics(retentionDays int) error {
 	cutoff := time.Now().AddDate(0, 0, -retentionDays).Unix()
 	_, err := s.db.Exec(`DELETE FROM node_metrics WHERE timestamp < ?`, cutoff)
@@ -321,7 +324,6 @@ func (s *DB) PruneMetrics(retentionDays int) error {
 	return nil
 }
 
-// Close closes the database.
 func (s *DB) Close() error {
 	return s.db.Close()
 }
