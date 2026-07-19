@@ -44,8 +44,21 @@ func (h *Handler) SetRecorder(r DownloadRecorder) {
 
 // V2Ping GET/HEAD /v2/ — 版本握手
 func (h *Handler) V2Ping(w http.ResponseWriter, r *http.Request) {
+	// If client already has a token, proxy to docker.1ms.run
+	if r.Header.Get("Authorization") != "" {
+		req, _ := http.NewRequestWithContext(r.Context(), r.Method, "https://docker.1ms.run/v2/", nil)
+		req.Header.Set("Authorization", r.Header.Get("Authorization"))
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil {
+			defer resp.Body.Close()
+			w.WriteHeader(resp.StatusCode)
+			return
+		}
+	}
+	// No token: return auth challenge pointing to docker.1ms.runs auth
 	w.Header().Set("Docker-Distribution-API-Version", "registry/2.0")
-	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Www-Authenticate", `Bearer realm="https://docker.1ms.run/openapi/v1/auth/token",service="docker.1ms.run"`)
+	w.WriteHeader(http.StatusUnauthorized)
 }
 
 // ServeHTTP 路由分发（用于 CONNECT 隧道内和 catch-all 路由）

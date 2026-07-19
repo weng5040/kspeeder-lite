@@ -6,6 +6,7 @@ import (
 	"net/http"
 )
 
+// proxyManifest transparently proxies to docker.1ms.run, passing auth through.
 func (h *Handler) proxyManifest(w http.ResponseWriter, r *http.Request, name, reference, registry string) {
 	manifestURL := "https://docker.1ms.run/v2/" + name + "/manifests/" + reference
 
@@ -16,17 +17,11 @@ func (h *Handler) proxyManifest(w http.ResponseWriter, r *http.Request, name, re
 		return
 	}
 
-	copyHeader(req.Header, r.Header, "Accept")
-
-	// Get token from docker.1ms.run auth if client didn't provide one
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" && registry == "dockerhub" && h.tokenSvc != nil {
-		if tok, err := h.tokenSvc.GetToken(r.Context(), registry, name); err == nil && tok != "" {
-			req.Header.Set("Authorization", "Bearer "+tok)
-		}
-	} else if authHeader != "" {
-		req.Header.Set("Authorization", authHeader)
+	// Pass through auth headers from docker client
+	if auth := r.Header.Get("Authorization"); auth != "" {
+		req.Header.Set("Authorization", auth)
 	}
+	copyHeader(req.Header, r.Header, "Accept")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -36,6 +31,7 @@ func (h *Handler) proxyManifest(w http.ResponseWriter, r *http.Request, name, re
 	}
 	defer resp.Body.Close()
 
+	// Forward response as-is (including 401 + Www-Authenticate from docker.1ms.run)
 	transparentHeaders(w, resp)
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
