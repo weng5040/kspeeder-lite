@@ -21,6 +21,7 @@ import (
 	"github.com/pullfusion/pullfusion/internal/metrics"
 	"github.com/pullfusion/pullfusion/internal/nodemgr"
 	"github.com/pullfusion/pullfusion/internal/server"
+	"github.com/pullfusion/pullfusion/internal/store"
 	"github.com/pullfusion/pullfusion/pkg/version"
 )
 
@@ -57,7 +58,8 @@ func main() {
 		}
 	}
 
-	nodeMgr := nodemgr.NewManager(cfg)
+	metricsStore, _ := store.Open("data")
+	nodeMgr := nodemgr.NewManagerWithStore(cfg, metricsStore)
 
 	// Load persisted nodes, auto-fetch if empty
 	loaded, _ := persist.Load(nodeMgr, cfg)

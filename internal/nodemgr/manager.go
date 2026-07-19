@@ -4,25 +4,68 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/pullfusion/pullfusion/internal/config"
+	"github.com/pullfusion/pullfusion/internal/store"
 )
 
-// Manager manages registry mirror nodes with smart selection.
+// Manager manages registry mirror nodes with smart selection and metric persistence.
 type Manager struct {
 	mu     sync.RWMutex
 	nodes  []*Node
 	scorer *Scorer
+	store  *store.MetricStore
 }
 
-// NewManager creates a node manager with the default scoring weights.
+// NewManager creates a node manager, loading nodes from config and warming up metrics.
 func NewManager(cfg *config.Config) *Manager {
+	return NewManagerWithStore(cfg, nil)
+}
+
+// NewManagerWithStore creates a node manager with optional metric persistence.
+func NewManagerWithStore(cfg *config.Config, ms *store.MetricStore) *Manager {
 	m := &Manager{
 		scorer: NewScorer(DefaultWeights()),
+		store:  ms,
 	}
 	m.initNodes(cfg)
+	if ms != nil {
+		m.warmupFromStore()
+	}
 	slog.Info("node manager initialized", "nodes", len(m.nodes))
 	return m
+}
+
+// warmupFromStore loads the latest metrics from SQLite and applies them to nodes.
+func (m *Manager) warmupFromStore() {
+	if m.store == nil {
+		return
+	}
+	latest, err := m.store.LoadLatest()
+	if err != nil {
+		slog.Warn("warmup: failed to load metrics", "error", err)
+		return
+	}
+	if len(latest) == 0 {
+		slog.Info("warmup: no historical metrics found")
+		return
+	}
+
+	for _, n := range m.nodes {
+		r, ok := latest[n.URL]
+		if !ok {
+			continue
+		}
+		atomic.StoreInt32(&n.FailCount, r.FailCount)
+		atomic.StoreInt64(&n.SuccessCount, atomic.LoadInt64(&n.SuccessCount)) // keep 0 since we only have latest
+		atomic.StoreInt64(&n.LatencyMs, r.LatencyMs)
+		atomic.StoreInt64(&n.SpeedKBps, r.SpeedKBps)
+		n.Healthy = r.Healthy
+		m.scorer.Score(n)
+	}
+	slog.Info("warmup: restored metrics from store", "nodes", len(latest))
 }
 
 // List returns a copy of all nodes.
@@ -34,21 +77,20 @@ func (m *Manager) List() []*Node {
 	return result
 }
 
-// AddNode adds a new node (for externally fetched nodes, e.g. status.anye.xyz).
+// AddNode adds a new node (for externally fetched nodes).
 func (m *Manager) AddNode(node *Node) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, n := range m.nodes {
 		if n.URL == node.URL {
-			return // duplicate
+			return
 		}
 	}
-	node.Healthy = true // new nodes start healthy
+	node.Healthy = true
 	m.nodes = append(m.nodes, node)
 }
 
 // SelectBest returns the best available node for the given registry.
-// Uses the scorer's idle-priority algorithm.
 func (m *Manager) SelectBest(registry string) *Node {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -73,26 +115,64 @@ func (m *Manager) SelectBest(registry string) *Node {
 	selected := m.scorer.SelectBest(candidates)
 	if selected != nil {
 		selected.IncrInflight()
-		slog.Info("node selected", "name", selected.DisplayName, "url", selected.URL[:min(len(selected.URL), 50)],
-			"score", selected.Score, "inflight", selected.InFlight, "latency_ms", selected.LatencyMs)
+		slog.Info("node selected",
+			"name", selected.DisplayName,
+			"score", selected.Score,
+			"inflight", selected.InFlight,
+			"latency_ms", selected.LatencyMs,
+			"fail_count", selected.FailCount,
+		)
 	}
 	return selected
 }
 
-// ReleaseNode decrements a node's in-flight count. Called after download completes.
+// ReleaseNode decrements a node's in-flight count and records metrics.
 func (m *Manager) ReleaseNode(node *Node, success bool, latencyMs, speedKBps int64) {
 	if node == nil {
 		return
 	}
 	node.DecrInflight()
+
 	if success {
 		node.RecordSuccess(latencyMs, speedKBps)
-		slog.Info("node success", "name", node.DisplayName, "latency_ms", latencyMs, "speed_kbps", speedKBps,
-			"inflight", node.InFlight, "score", node.Score)
 	} else {
-		unhealthy := node.RecordFailure()
-		slog.Warn("node failure", "name", node.DisplayName, "fail_count", node.FailCount,
-			"unhealthy", unhealthy, "latency_ms", latencyMs)
+		node.RecordFailure()
+	}
+	m.scorer.Score(node)
+
+	// Persist metric to SQLite
+	if m.store != nil {
+		r := store.MetricRecord{
+			NodeURL:   node.URL,
+			Timestamp: time.Now(),
+			LatencyMs: latencyMs,
+			SpeedKBps: speedKBps,
+			Success:   success,
+			FailCount: atomic.LoadInt32(&node.FailCount),
+			Score:     atomic.LoadInt32(&node.Score),
+			InFlight:  atomic.LoadInt32(&node.InFlight),
+			Healthy:   node.Healthy,
+		}
+		if err := m.store.Insert(r); err != nil {
+			slog.Warn("failed to persist metric", "node", node.DisplayName, "error", err)
+		}
+	}
+
+	if success {
+		slog.Info("node success",
+			"name", node.DisplayName,
+			"latency_ms", latencyMs,
+			"speed_kbps", speedKBps,
+			"score", node.Score,
+			"inflight", node.InFlight,
+		)
+	} else {
+		slog.Warn("node failure",
+			"name", node.DisplayName,
+			"fail_count", node.FailCount,
+			"healthy", node.Healthy,
+			"score", node.Score,
+		)
 	}
 }
 
@@ -110,7 +190,15 @@ func (m *Manager) GetHealthStatus() (int, int) {
 	return total, healthy
 }
 
-// ReloadNodes reloads nodes from config (hot-reload).
+// Get7DayStats returns 7-day aggregated node statistics from the metric store.
+func (m *Manager) Get7DayStats() (map[string]store.NodeStats, error) {
+	if m.store == nil {
+		return nil, fmt.Errorf("no metric store configured")
+	}
+	return m.store.Stats7Day()
+}
+
+// ReloadNodes reloads nodes from config.
 func (m *Manager) ReloadNodes(rawCfg interface{}) {
 	cfg, ok := rawCfg.(*config.Config)
 	if !ok {
@@ -123,7 +211,7 @@ func (m *Manager) ReloadNodes(rawCfg interface{}) {
 	slog.Info("nodes reloaded", "count", len(m.nodes))
 }
 
-// GetNodesForScoring returns all nodes with computed scores (for admin API).
+// GetScoredNodes returns all nodes with computed scores.
 func (m *Manager) GetScoredNodes() []*Node {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
