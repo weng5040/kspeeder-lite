@@ -21,7 +21,6 @@ type DownloadRecord struct {
 	Name        string  `json:"name"`
 	Size        int64   `json:"size"`
 	NodeCount   int     `json:"node_count"`
-	SpeedKbps   float64 `json:"speed_kbps"`
 	DurationSec float64 `json:"duration_sec"`
 	Error       string  `json:"error,omitempty"`
 }
@@ -82,7 +81,6 @@ func (a *API) RecordDownload(name string, size int64, nodeCount int, duration ti
 		rec.Error = err.Error()
 	}
 	if duration.Seconds() > 0 {
-		rec.SpeedKbps = float64(size) / 1024.0 / duration.Seconds()
 	}
 
 	a.dlLog = append(a.dlLog, rec)

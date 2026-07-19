@@ -27,7 +27,6 @@ type MirrorsConfig struct {
 // MirrorNode 镜像源节点
 type MirrorNode struct {
 	URL         string `yaml:"url"`
-	Priority    int    `yaml:"priority"`
 	DisplayName string `yaml:"display_name"`
 	Token       string `yaml:"token,omitempty"`
 }
@@ -42,7 +41,6 @@ type ProxiesConfig struct {
 type ProxyNode struct {
 	URL         string   `yaml:"url"`
 	DisplayName string   `yaml:"display_name"`
-	Priority    int      `yaml:"priority"`
 	Targets     []string `yaml:"targets"`
 }
 

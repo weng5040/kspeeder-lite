@@ -13,32 +13,19 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// DB is the SQLite-backed persistence layer for nodes and metrics.
-type DB struct {
-	db *sql.DB
-}
+type DB struct{ db *sql.DB }
 
-// ── Node public record ──
-
-// NodeRecord is a persisted node entry.
+// NodeRecord is a persisted node entry (identity + config only, no runtime state).
 type NodeRecord struct {
 	URL         string
 	DisplayName string
-	Priority    int
 	Enabled     bool
 	Targets     []string
 	Token       string
-	FailCount   int32
-	SuccessCnt  int64
-	LatencyMs   int64
-	SpeedKBps   int64
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
 
-// ── Metric public record ──
-
-// MetricRecord is a single scoring event for a node.
 type MetricRecord struct {
 	NodeURL    string
 	Timestamp  time.Time
@@ -52,8 +39,6 @@ type MetricRecord struct {
 	BytesTotal int64
 }
 
-// ── Predefined stats periods ──
-
 var (
 	Period7Day   = StatsPeriod{"7d", 7 * 86400}
 	Period15Day  = StatsPeriod{"15d", 15 * 86400}
@@ -63,10 +48,7 @@ var (
 	AllPeriods   = []StatsPeriod{Period7Day, Period15Day, Period30Day, Period180Day, Period365Day}
 )
 
-type StatsPeriod struct {
-	Name    string
-	Seconds int64
-}
+type StatsPeriod struct{ Name string; Seconds int64 }
 
 type AggregatedStats struct {
 	NodeURL     string  `json:"node_url"`
@@ -81,50 +63,43 @@ type AggregatedStats struct {
 	LastUsed    string  `json:"last_used"`
 }
 
-// ── Open / migrate ──
+// ── Open ──
 
 func Open(dataDir string) (*DB, error) {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
-
 	path := filepath.Join(dataDir, "pullfusion.db")
 	db, err := sql.Open("sqlite", path+"?_journal=WAL&_busy_timeout=5000&_sync=1")
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
-
 	db.SetMaxOpenConns(1)
 	s := &DB{db: db}
-
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
-
 	slog.Info("store: database opened", "path", path)
 	return s, nil
 }
 
 func (s *DB) migrate() error {
 	_, err := s.db.Exec(`
-		-- 节点配置表：每个镜像加速节点的元信息和当前状态
+		-- 节点配置表：每个镜像加速节点的标识和配置
 		CREATE TABLE IF NOT EXISTS nodes (
 			url          TEXT PRIMARY KEY,  -- 节点唯一标识（镜像站地址）
 			display_name TEXT NOT NULL,     -- 前端展示名称（来自 status.anye.xyz）
-			priority     INTEGER DEFAULT 50,-- 优先级：越小越优先，配置节点=1，抓取节点=50
 			enabled      INTEGER DEFAULT 1, -- 是否启用：1=启用 0=禁用
-			targets      TEXT DEFAULT '["dockerhub"]', -- 支持的 registry 类型（JSON 数组）
+			targets      TEXT DEFAULT '["dockerhub"]', -- 支持的 registry（JSON 数组）
 			token        TEXT DEFAULT '',    -- 节点专用认证 token（预留）
-			fail_count   INTEGER DEFAULT 0, -- 连续失败次数，>=5 标记不健康
-			success_cnt  INTEGER DEFAULT 0, -- 累计成功次数（供 log10 评分）
-			latency_ms   INTEGER DEFAULT 0, -- 最近一次请求延迟（毫秒）
-			speed_kbps   INTEGER DEFAULT 0, -- 最近一次下载速度（KB/s）
 			created_at   INTEGER NOT NULL,  -- 首次入库时间（Unix 秒）
 			updated_at   INTEGER NOT NULL   -- 最后更新时间（Unix 秒）
 		);
 
-		-- 评分时序表：每次下载事件的完整记录，用于趋势分析和聚合统计
+		-- 评分时序表：每次下载事件的完整记录
+		-- 所有评分维度（延迟/速度/失败/成功/分数/负载）都存在这里
+		-- 支持 7d/30d/365d 等任意时间窗口的聚合查询
 		CREATE TABLE IF NOT EXISTS node_metrics (
 			id          INTEGER PRIMARY KEY AUTOINCREMENT, -- 自增事件 ID
 			node_url    TEXT NOT NULL REFERENCES nodes(url),-- 关联的节点地址
@@ -139,11 +114,8 @@ func (s *DB) migrate() error {
 			bytes_total INTEGER DEFAULT 0   -- 本次下载字节数
 		);
 
-		-- 按节点查询的索引
-		CREATE INDEX IF NOT EXISTS idx_metrics_url  ON node_metrics(node_url);
-		-- 按时间查询的索引（用于时间窗口聚合）
-		CREATE INDEX IF NOT EXISTS idx_metrics_time ON node_metrics(timestamp);
-		-- 节点+时间复合索引（用于单节点的趋势图）
+		CREATE INDEX IF NOT EXISTS idx_metrics_url      ON node_metrics(node_url);
+		CREATE INDEX IF NOT EXISTS idx_metrics_time     ON node_metrics(timestamp);
 		CREATE INDEX IF NOT EXISTS idx_metrics_url_time ON node_metrics(node_url, timestamp);
 	`)
 	return err
@@ -151,26 +123,19 @@ func (s *DB) migrate() error {
 
 // ─── Node CRUD ──────────────────────────────────────────────
 
-// SaveNodes persists all nodes. Existing nodes are updated, new ones inserted.
 func (s *DB) SaveNodes(nodes []NodeRecord) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-
 	now := time.Now().Unix()
 	for _, n := range nodes {
 		targetsJSON, _ := json.Marshal(n.Targets)
 		_, err := tx.Exec(`
-			INSERT OR REPLACE INTO nodes
-				(url, display_name, priority, enabled, targets, token,
-				 fail_count, success_cnt, latency_ms, speed_kbps, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM nodes WHERE url=?), ?), ?)`,
-			n.URL, n.DisplayName, n.Priority, boolToInt(n.Enabled),
-			string(targetsJSON), n.Token, n.FailCount, n.SuccessCnt,
-			n.LatencyMs, n.SpeedKBps, n.URL, now, now,
-		)
+			INSERT OR REPLACE INTO nodes (url, display_name, enabled, targets, token, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM nodes WHERE url=?), ?), ?)`,
+			n.URL, n.DisplayName, boolToInt(n.Enabled), string(targetsJSON), n.Token, n.URL, now, now)
 		if err != nil {
 			return fmt.Errorf("save node %s: %w", n.URL, err)
 		}
@@ -178,49 +143,41 @@ func (s *DB) SaveNodes(nodes []NodeRecord) error {
 	return tx.Commit()
 }
 
-// LoadNodes reads all persisted nodes.
 func (s *DB) LoadNodes() ([]NodeRecord, error) {
-	rows, err := s.db.Query(`SELECT url, display_name, priority, enabled, targets, token,
-		fail_count, success_cnt, latency_ms, speed_kbps, created_at, updated_at FROM nodes`)
+	rows, err := s.db.Query(`SELECT url, display_name, enabled, targets, token, created_at, updated_at FROM nodes`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-
 	var result []NodeRecord
 	for rows.Next() {
 		var n NodeRecord
 		var targetsJSON string
 		var enabled int
-		var createdAt, updatedAt int64
-		if err := rows.Scan(&n.URL, &n.DisplayName, &n.Priority, &enabled,
-			&targetsJSON, &n.Token, &n.FailCount, &n.SuccessCnt, &n.LatencyMs,
-			&n.SpeedKBps, &createdAt, &updatedAt); err != nil {
+		var ca, ua int64
+		if err := rows.Scan(&n.URL, &n.DisplayName, &enabled, &targetsJSON, &n.Token, &ca, &ua); err != nil {
 			return nil, err
 		}
 		json.Unmarshal([]byte(targetsJSON), &n.Targets)
 		n.Enabled = enabled != 0
-		n.CreatedAt = time.Unix(createdAt, 0)
-		n.UpdatedAt = time.Unix(updatedAt, 0)
+		n.CreatedAt = time.Unix(ca, 0)
+		n.UpdatedAt = time.Unix(ua, 0)
 		result = append(result, n)
 	}
 	return result, rows.Err()
 }
 
-// ─── Metrics CRUD ───────────────────────────────────────────
+// ─── Metrics + Aggregation ──────────────────────────────────
 
-// InsertMetric writes a metric record.
 func (s *DB) InsertMetric(r MetricRecord) error {
 	_, err := s.db.Exec(`
 		INSERT INTO node_metrics (node_url, timestamp, latency_ms, speed_kbps, success, fail_count, score, inflight, healthy, bytes_total)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.NodeURL, r.Timestamp.Unix(), r.LatencyMs, r.SpeedKBps,
-		boolToInt(r.Success), r.FailCount, r.Score, r.InFlight, boolToInt(r.Healthy), r.BytesTotal,
-	)
+		boolToInt(r.Success), r.FailCount, r.Score, r.InFlight, boolToInt(r.Healthy), r.BytesTotal)
 	return err
 }
 
-// LoadLatestMetrics loads the most recent metric for each node.
 func (s *DB) LoadLatestMetrics() (map[string]MetricRecord, error) {
 	rows, err := s.db.Query(`
 		SELECT node_url, timestamp, latency_ms, speed_kbps, success, fail_count, score, inflight, healthy, bytes_total
@@ -229,7 +186,6 @@ func (s *DB) LoadLatestMetrics() (map[string]MetricRecord, error) {
 		return nil, err
 	}
 	defer rows.Close()
-
 	result := make(map[string]MetricRecord)
 	for rows.Next() {
 		var r MetricRecord
@@ -247,50 +203,47 @@ func (s *DB) LoadLatestMetrics() (map[string]MetricRecord, error) {
 	return result, rows.Err()
 }
 
-// ─── Aggregation Queries ────────────────────────────────────
+// RecentFails returns how many of the last N requests to a node failed.
+func (s *DB) RecentFails(nodeURL string, lookback int) int {
+	var count int
+	s.db.QueryRow(`SELECT COUNT(*) FROM (
+		SELECT success FROM node_metrics WHERE node_url=? ORDER BY id DESC LIMIT ?
+	) WHERE success=0`, nodeURL, lookback).Scan(&count)
+	return count
+}
 
 func (s *DB) GetStats() (map[string][]AggregatedStats, error) {
 	result := make(map[string][]AggregatedStats)
 	for _, p := range AllPeriods {
 		stats, err := s.getStatsForPeriod(p)
 		if err != nil {
-			return nil, fmt.Errorf("period %s: %w", p.Name, err)
+			return nil, err
 		}
 		result[p.Name] = stats
 	}
 	return result, nil
 }
 
-func (s *DB) GetStatsForPeriod(periodKey string) ([]AggregatedStats, error) {
+func (s *DB) GetStatsForPeriod(key string) ([]AggregatedStats, error) {
 	for _, p := range AllPeriods {
-		if p.Name == periodKey {
+		if p.Name == key {
 			return s.getStatsForPeriod(p)
 		}
 	}
-	return nil, fmt.Errorf("unknown period: %s", periodKey)
+	return nil, fmt.Errorf("unknown period: %s", key)
 }
 
 func (s *DB) getStatsForPeriod(p StatsPeriod) ([]AggregatedStats, error) {
-	cutoff := time.Now().Unix() - p.Seconds
 	rows, err := s.db.Query(`
-		SELECT node_url,
-			COUNT(*) as total,
-			SUM(CASE WHEN success THEN 1 ELSE 0 END) as successes,
-			COALESCE(AVG(latency_ms), 0) as avg_latency,
-			COALESCE(AVG(speed_kbps), 0) as avg_speed,
-			COALESCE(AVG(score), 0) as avg_score,
-			COALESCE(SUM(bytes_total), 0) as total_bytes,
-			COALESCE(MAX(timestamp), 0) as last_used
-		FROM node_metrics
-		WHERE timestamp > ?
-		GROUP BY node_url
-		ORDER BY avg_score DESC
-	`, cutoff)
+		SELECT node_url, COUNT(*), SUM(CASE WHEN success THEN 1 ELSE 0 END),
+			COALESCE(AVG(latency_ms),0), COALESCE(AVG(speed_kbps),0),
+			COALESCE(AVG(score),0), COALESCE(SUM(bytes_total),0), COALESCE(MAX(timestamp),0)
+		FROM node_metrics WHERE timestamp > ? GROUP BY node_url ORDER BY AVG(score) DESC`,
+		time.Now().Unix()-p.Seconds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-
 	var result []AggregatedStats
 	for rows.Next() {
 		var as AggregatedStats
@@ -312,23 +265,16 @@ func (s *DB) getStatsForPeriod(p StatsPeriod) ([]AggregatedStats, error) {
 	return result, rows.Err()
 }
 
-// ─── Cleanup ────────────────────────────────────────────────
-
 func (s *DB) PruneMetrics(retentionDays int) error {
 	cutoff := time.Now().AddDate(0, 0, -retentionDays).Unix()
 	_, err := s.db.Exec(`DELETE FROM node_metrics WHERE timestamp < ?`, cutoff)
-	if err != nil {
-		return err
+	if err == nil {
+		slog.Info("store: pruned old metrics", "cutoff_days", retentionDays)
 	}
-	slog.Info("store: pruned old metrics", "cutoff_days", retentionDays)
-	return nil
+	return err
 }
 
-func (s *DB) Close() error {
-	return s.db.Close()
-}
-
-// ─── Helpers ────────────────────────────────────────────────
+func (s *DB) Close() error { return s.db.Close() }
 
 func boolToInt(b bool) int {
 	if b {

@@ -16,7 +16,6 @@ const defaultFile = "data/nodes.json"
 type NodeEntry struct {
 	URL         string   `json:"url"`
 	DisplayName string   `json:"display_name"`
-	Priority    int      `json:"priority"`
 	Targets     []string `json:"targets"`
 	Token       string   `json:"token,omitempty"`
 }
@@ -35,7 +34,6 @@ func Save(mgr *nodemgr.Manager, cfg *config.Config) error {
 		entries = append(entries, NodeEntry{
 			URL:         n.URL,
 			DisplayName: n.DisplayName,
-			Priority:    n.Priority,
 			Targets:     n.Targets,
 			Token:       n.Token,
 		})
@@ -72,7 +70,6 @@ func Load(mgr *nodemgr.Manager, cfg *config.Config) (int, error) {
 		mgr.AddNode(&nodemgr.Node{
 			URL:         e.URL,
 			DisplayName: e.DisplayName,
-			Priority:    e.Priority,
 			Enabled:     true,
 			Healthy:     true,
 			Targets:     e.Targets,
