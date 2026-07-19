@@ -1,267 +1,257 @@
 # PullFusion
 
-> **Multi-source Bandwidth Fusion for Docker Images** — 多源带宽叠加，让镜像拉取快如闪电。
-> 
-> **📌 声明** — 本项目思路来源于 [KSpeeder](https://kspeeder.com)，如有不妥请联系 [coolmeweng@inyo.cc](mailto:coolmeweng@inyo.cc) 删除。本项目全程由 AI 辅助开发完成。
+> **Docker 镜像多源带宽叠加代理** — 从 `status.anye.xyz` 自动获取免费加速节点，让你的 `docker pull` 快如闪电。
 
 <p align="center">
   <img src="https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go" alt="Go">
   <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License">
   <img src="https://img.shields.io/badge/Version-1.0.0-green.svg" alt="Version">
-  <img src="https://img.shields.io/badge/Docker-Supported-2496ED?style=flat&logo=docker" alt="Docker">
 </p>
 
-PullFusion 是一个开源的多源带宽叠加 Docker 镜像代理，通过 **多 mirror + socks5/http 代理并发分块下载** 实现 2~3 倍带宽叠加；提供 **registry-mirror 与 CONNECT 代理双模式** 集成；**开箱即用** — 内置 5 个公共 mirror，一条 docker compose 命令即可部署。
+## 特性
+
+- **零配置启动** — 首次启动自动从 `status.anye.xyz` 抓取免费节点，持久化到本地 JSON
+- **自动测速** — 5 分钟间隔对所有节点测速排序，下载时自动择优
+- **故障熔断** — 节点超时自动标记不可用，恢复后自动启用
+- **Web 管理面板** — 内置 Dashboard，一键刷新节点、查看状态
+- **TLS 双模式** — 自签证书开箱即用，支持 Let's Encrypt 真证书
+- **多 registry** — 同时支持 Docker Hub + GHCR
 
 ---
 
-## 为什么选择 PullFusion？
+## 快速部署
 
-|  | PullFusion | 单一 Mirror | 其他方案 |
-|--|-----------|------------|---------|
-| **带宽叠加** | 多源并发，2~3x | 单源，无叠加 | 通常无叠加 |
-| **集成方式** | registry-mirror + CONNECT 代理 | 仅 registry-mirror | 单一模式 |
-| **故障转移** | 自动熔断 + 多级 fallback | 单点故障 | 有限 or 手动 |
-| **代理节点** | socks5/http 代理节点融合 | 不支持 | 通常不支持 |
-| **管理面板** | 内置 Web Dashboard | 无 | 无 or 外部 |
-| **配置热加载** | 自动检测 + 手动 API | 需重启 | 需重启 |
-
----
-
-## 快速开始
-
-### Step 1 — 克隆仓库
+### 方式一：Docker（推荐）
 
 ```bash
-git clone https://github.com/weng5040/PullFusion.git pullfusion
-cd pullfusion
+git clone https://github.com/weng5040/PullFusion.git
+cd PullFusion
+docker compose -f docker/docker-compose.yml up -d
 ```
 
-### Step 2 — 准备配置并启动
+首次启动会自动抓取 20+ 免费节点，查看日志：
 
 ```bash
-mkdir -p docker/config docker/cache
-cp configs/nodes.sample.yaml docker/config/nodes.yaml
-cd docker && docker compose up -d
+docker compose logs -f
+# 看到 "auto-fetch complete added=18 total=24" 即就绪
 ```
 
-### Step 3 — 拉取镜像验证
+访问管理面板：`http://<服务器IP>:5003`
+
+### 方式二：二进制部署
 
 ```bash
-docker pull nginx:latest
+# 编译
+cd PullFusion && go build -o bin/pullfusion ./cmd/pullfusion/
+
+# 首次启动（零配置，自动抓取节点）
+./bin/pullfusion -config configs/nodes.sample.yaml
 ```
 
 ---
 
-## 核心特性
+## Docker 客户端配置
 
-### 多源带宽叠加
+部署完 PullFusion 后，在所有需要加速的机器上配置 Docker 客户端。
 
-多个 mirror 与 socks5/http 代理节点并发分块下载同一 blob，将多路带宽线性叠加。实测 1 个 mirror + 2 个 socks5 代理可稳定达到 2~3x 加速比。
+> **注意：** 你需要知道 PullFusion 服务器的 IP（以下用 `PULLFUSION_IP` 代替）。
 
-### 双模式集成
+### 方案 A：IP 直连（最简单）
 
-| 模式 | 端口 | 适用场景 |
-|------|------|---------|
-| **registry-mirror** | `5443` (HTTPS) | 内网部署，仅加速 dockerhub |
-| **CONNECT 代理** | `5003` (HTTP) | 多 registry 支持，免配置证书 |
-
-### 智能负载均衡
-
-4 维加权评分算法自动选择最优节点：
-- **Speed** — 最近测速带宽 (Mbps)
-- **Priority** — 用户配置的优先级
-- **Health** — 健康状态（熔断/正常）
-- **Load** — 当前并发数
-
-### 熔断恢复
-
-连续失败 3 次自动熔断节点，后台探测每 30s 探活，测速通过后自动恢复。
-
-### 本地缓存
-
-LRU 策略的 blob 磁盘缓存，命中后直接响应略过上流下载，二次拉取速度提升 10x+。
-
-### 可观测性
-
-- **Web Dashboard** — `/dashboard` 嵌入式管理面板
-- **Prometheus** — `/metrics` 导出 8 个核心指标
-- **健康检查** — `/healthz` 端点，支持 K8s probe
-
----
-
-## 架构概览
-
-```
-                        docker pull nginx:latest
-                              │
-              ┌───────────────┴───────────────┐
-              ▼                               ▼
-     registry-mirror 模式              CONNECT 代理模式
-     dockerd → :5443 (HTTPS)          dockerd → :5003 (HTTP Tunnel)
-              │                               │
-              └───────────────┬───────────────┘
-                              ▼
-              ┌───────────────────────────────┐
-              │         PullFusion Core       │
-              │                               │
-              │  ┌─────────────────────────┐  │
-              │  │     Load Balancer        │  │
-              │  │   Speed × Priority ×     │  │
-              │  │   Health × Load          │  │
-              │  └───────────┬─────────────┘  │
-              │              │                │
-              │   ┌──────────┼──────────┐     │
-              │   ▼          ▼          ▼     │
-              │ ┌──────┐ ┌──────┐ ┌──────┐   │
-              │ │Mirror│ │Mirror│ │Socks5│   │
-              │ │  #1  │ │  #2  │ │Proxy │   │
-              │ └──┬───┘ └──┬───┘ └──┬───┘   │
-              │    │         │        │       │
-              │    │    io.Pipe Streaming     │
-              │    └─────────┼────────┘       │
-              │              ▼                │
-              │        ┌──────────┐           │
-              │        │  Client  │           │
-              │        └──────────┘           │
-              └───────────────────────────────┘
-```
-
----
-
-## Dockerd 集成
-
-### 方式 A：registry-mirror 模式
-
-```json
-// /etc/docker/daemon.json
+```bash
+cat > /etc/docker/daemon.json << 'EOF'
 {
-  "registry-mirrors": ["https://<host>:5443"],
-  "insecure-registries": ["<host>:5443"]
+    "registry-mirrors": ["https://PULLFUSION_IP:5443"],
+    "insecure-registries": ["PULLFUSION_IP:5443"]
 }
+EOF
+systemctl restart docker
 ```
+
+### 方案 B：域名 + 真证书（无需 insecure-registries）
+
+如果你有域名（如 `docker.your-domain.com`），可以申请 Let's Encrypt 证书：
 
 ```bash
-sudo systemctl restart docker
+# 1. DNS 指向 PullFusion 服务器
+#    docker.your-domain.com → A → <PULLFUSION_IP>
+
+# 2. 安装 certbot
+apt install -y certbot python3-certbot-dns-cloudflare  # CloudFlare 用户
+# 或
+apt install -y certbot                                     # 命令行手动验证
+
+# 3. 申请证书
+certbot certonly --manual --preferred-challenges dns -d docker.your-domain.com
+# 按照提示在 DNS 添加 TXT 记录
+
+# 4. 复制到 PullFusion 的 data 目录
+cp /etc/letsencrypt/live/docker.your-domain.com/fullchain.pem data/cert.crt
+cp /etc/letsencrypt/live/docker.your-domain.com/privkey.pem data/cert.key
+
+# 5. 修改 configs/nodes.sample.yaml
+#    server.tls.cert: data/cert.crt
+#    server.tls.key: data/cert.key
+#    server.registry_domain: docker.your-domain.com
+
+# 6. 重启 PullFusion
+systemctl restart pullfusion
+
+# 7. Docker 客户端只需一行配置（不需要 insecure-registries！）
+cat > /etc/docker/daemon.json << 'EOF'
+{"registry-mirrors":["https://docker.your-domain.com:5443"]}
+EOF
+systemctl restart docker
 ```
 
-### 方式 B：CONNECT 代理模式（推荐）
+### 方案 C：域名 + /etc/hosts（无公网 DNS）
 
-```json
-// /etc/docker/daemon.json
-{
-  "registry-mirrors": ["https://registry.local"]
-}
-```
-
-```ini
-# /etc/systemd/system/docker.service.d/proxy.conf
-[Service]
-Environment="HTTP_PROXY=http://<host>:5003"
-Environment="HTTPS_PROXY=http://<host>:5003"
-Environment="NO_PROXY=127.0.0.1,localhost"
-```
+如果域名不能改 DNS，在内网机器上用 `/etc/hosts`：
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl restart docker
+echo '<PULLFUSION_IP> docker.your-domain.com' >> /etc/hosts
 ```
 
 ---
 
-## 管理面板
+## 验证
 
-浏览器访问 `http://<host>:5003/dashboard` 打开嵌入式 Web 管理面板：
+```bash
+docker pull alpine:latest
+docker pull python:latest
+```
 
-- **节点状态面板** — 实时显示各节点的名称、类型、速度、健康状态和并发数
-- **下载统计** — 成功/失败计数、错误率、活跃下载数
-- **节点操作** — 一键触发单节点测速
-- **配置管理** — 手动触发配置热加载
+正常应该看到各层以 `Download complete` 完成。
 
 ---
 
-## API 端点
+## 域名证书续期
 
-| 方法 | 端点 | 说明 |
+### 自签证书（默认）
+
+自动生成，有效期 1 年，保存在 `data/` 目录，每次重启复用。无需手动续期。
+
+### Let's Encrypt 证书
+
+certbot 安装后会自动注册定时任务，执行：
+
+```bash
+# 查看续期状态
+certbot renew --dry-run
+
+# 手动续期
+certbot renew
+
+# 续期后重载 PullFusion
+cp /etc/letsencrypt/live/<域名>/fullchain.pem data/cert.crt
+cp /etc/letsencrypt/live/<域名>/privkey.pem data/cert.key
+systemctl restart pullfusion
+```
+
+也可以写个 cron 任务自动化：
+
+```bash
+# /etc/cron.daily/pullfusion-cert
+#!/bin/sh
+certbot renew --quiet
+cp /etc/letsencrypt/live/docker.your-domain.com/fullchain.pem /opt/pullfusion/data/cert.crt
+cp /etc/letsencrypt/live/docker.your-domain.com/privkey.pem /opt/pullfusion/data/cert.key
+systemctl restart pullfusion
+```
+
+---
+
+## Dashboard 使用
+
+访问 `http://<PULLFUSION_IP>:5003`
+
+| 功能 | 说明 |
+|------|------|
+| 查看节点 | 节点列表、速度、状态（🟢在线 ⚪离线） |
+| 获取免费节点 | 点击紫色按钮，从 `status.anye.xyz` 拉取最新公开镜像源 |
+| 刷新配置 | 修改 `nodes.yaml` 后点击热加载 |
+
+---
+
+## 配置文件
+
+`configs/nodes.sample.yaml` 默认零配置，所有节点自动抓取：
+
+```yaml
+mirrors:
+  dockerhub: []   # 留空，启动时自动填充
+  ghcr: []        # 留空
+
+server:
+  registry_port: 5443
+  proxy_port: 5003
+  registry_domain: registry.local  # 自签证书域名
+  tls:
+    cert: ''      # 留空则自动生成自签证书
+    key: ''
+```
+
+### 手动添加节点
+
+```yaml
+mirrors:
+  dockerhub:
+    - url: https://docker.your-mirror.com
+      priority: 10          # 越小越优先
+      display_name: 我的镜像源
+```
+
+---
+
+## 管理 API
+
+| 端点 | 方法 | 说明 |
 |------|------|------|
-| `GET` | `/healthz` | 健康检查 |
-| `GET` | `/admin/nodes` | 节点列表及状态 |
-| `POST` | `/admin/nodes/{id}/test` | 触发单节点测速 |
-| `GET` | `/admin/stats` | 全局下载统计 |
-| `POST` | `/admin/config/reload` | 手动配置重载 |
-| `GET` | `/metrics` | Prometheus 指标 |
-| `GET` | `/dashboard` | Web 管理仪表盘 |
+| `/healthz` | GET | 健康检查 |
+| `/admin/nodes` | GET | 节点列表 + 状态 |
+| `/admin/nodes/fetch` | POST | 从 `status.anye.xyz` 抓取免费节点 |
+| `/admin/nodes/{id}/test` | POST | 触发单节点测速 |
+| `/admin/stats` | GET | 全局统计 |
+| `/admin/config/reload` | POST | 热加载配置 |
+| `/dashboard` | GET | Web 管理面板 |
+| `/metrics` | GET | Prometheus 指标 |
 
 ---
 
-## 平台支持
-
-| 平台 | amd64 | arm64 | armv7 |
-|------|:-----:|:-----:|:-----:|
-| Linux (Docker) |  ✔️ |  ✔️ |  ✔️ |
-| 群晖 DSM 7.x+ |  ✔️ | — | — |
-| OpenWrt / 软路由 |  ✔️ |  ✔️ |  ✔️ |
-| Raspberry Pi | — |  ✔️ |  ✔️ |
-
----
-
-## 项目结构
+## 架构
 
 ```
-pullfusion/
-├── cmd/pullfusion/         # 应用入口
-├── internal/
-│   ├── admin/              # 管理 API + Web Dashboard
-│   ├── auth/               # DockerHub / GHCR token 鉴权
-│   ├── config/             # 配置加载与热更新 (fsnotify)
-│   ├── downloader/         # 多源并发分块下载器
-│   ├── metrics/            # Prometheus 指标
-│   ├── nodemgr/            # 节点管理与负载均衡
-│   ├── proxyclient/        # socks5/http 代理拨号
-│   ├── registry/           # Docker Registry API V2 实现
-│   ├── server/             # Registry HTTPS + CONNECT 代理
-│   └── tlsutil/            # 自签证书生成
-├── pkg/
-│   └── version/            # 版本信息
-├── configs/                # 配置模板
-├── docker/                 # Dockerfile + Compose
-├── docs/                   # 文档
-├── scripts/                # 构建与测试脚本
-└── test/                   # 测试用例
+status.anye.xyz ──→ 自动抓取 ──→ data/nodes.json (持久化)
+                                      │
+                                      ▼
+                           ┌── nodemgr (节点管理)
+                           │     ├── 自动测速排序
+                           │     └── 故障熔断恢复
+                           │
+Docker 客户端 ──→ PullFusion :5443
+                   ├── /v2/         → 版本握手
+                   ├── manifest     → docker.1ms.run 内部 token + 代理
+                   └── blob         → docker.1ms.run 代理下载
 ```
 
 ---
 
-## 开发
+## FAQ
 
-```bash
-# 本地运行
-go run ./cmd/pullfusion -config configs/nodes.sample.yaml
+**Q: 为什么需要 `insecure-registries`？**
+A: 默认使用自签证书。配置 Let's Encrypt 真证书后可去掉。
 
-# 构建
-bash scripts/build.sh
+**Q: 节点会持久化吗？**
+A: 会。默认保存在 `data/nodes.json`，重启不丢失。
 
-# 测试
-bash scripts/test.sh
+**Q: 节点多久刷新一次？**
+A: 启动时如果没数据会自动抓取。运行中可通过 Dashboard "获取免费节点" 手动刷新。
 
-# 代码检查
-golangci-lint run
-```
+**Q: 和 KSpeeder 有什么区别？**
+A: PullFusion 是开源版，节点从公开聚合站自动获取，完全零配置。KSpeeder 需要域名和内置证书。
 
 ---
-
-## 文档
-
-- [API 文档](docs/api.md)
-- [部署指南](docs/deployment.md)
-- [故障排查](docs/troubleshooting.md)
-
----
-
-## 致谢
-
-PullFusion 基于 [kspeeder-lite](https://github.com/weng5040/PullFusion) 演变而来，感谢所有贡献者。
 
 ## License
 
-[MIT](LICENSE)
+MIT
