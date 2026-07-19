@@ -99,7 +99,7 @@ func (a *API) ServeDashboard(w http.ResponseWriter, r *http.Request) {
 
 // ListNodes GET /admin/nodes
 func (a *API) ListNodes(w http.ResponseWriter, r *http.Request) {
-	nodes := a.nodeMgr.List()
+	nodes := a.nodeMgr.GetScoredNodes()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(nodes)
 }
