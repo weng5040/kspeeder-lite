@@ -277,7 +277,7 @@ async function testSingle(url, kind, el) {
     var r = await fetch('/admin/nodes/test-one', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: url })
+      body: JSON.stringify({ url: url, event_type: kind })
     });
     if (!r.ok) throw new Error('http ' + r.status);
     // Refetch only this node's data

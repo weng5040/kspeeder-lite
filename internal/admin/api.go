@@ -93,18 +93,18 @@ func (a *API) ListNodes(w http.ResponseWriter, r *http.Request) {
 // TestNode POST /admin/nodes/{id}/test
 func (a *API) TestNode(w http.ResponseWriter, r *http.Request) {
 	nodeID := chi.URLParam(r, "id")
-	a.testNodeByURL(nodeID)
+	a.testNodeByURL(nodeID, "")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // TestOneNode POST /admin/nodes/test-one - test a single node by URL
 func (a *API) TestOneNode(w http.ResponseWriter, r *http.Request) {
-	var req struct{ URL string `json:"url"` }
+	var req struct{ URL string `json:"url"`; EventType string `json:"event_type"` }
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.URL == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing url"})
 		return
 	}
-	a.testNodeByURL(req.URL)
+	a.testNodeByURL(req.URL, req.EventType)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "url": req.URL})
 }
 
@@ -126,16 +126,23 @@ func (a *API) TestAllNodes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "started"})
 }
 
-func (a *API) testNodeByURL(targetURL string) {
-	r := a.speedTester.TestOne(speedtest.NodeInfo{URL: targetURL})
-	if r.Error == "" {
-		a.nodeMgr.RecordDownload(r.NodeURL, r.LatencyMs, r.SpeedKBps, r.Bytes/1024, true)
-	} else {
-		a.nodeMgr.RecordDownload(r.NodeURL, r.LatencyMs, 0, 0, false)
-	}
-}
 
 // FetchNodes POST /admin/nodes/fetch — 从远程源抓取免费节点
+	func (a *API) testNodeByURL(targetURL, eventType string) {
+		r := a.speedTester.TestOne(speedtest.NodeInfo{URL: targetURL})
+		switch eventType {
+		case "latency":
+			a.nodeMgr.RecordMetric(r.NodeURL, "latency", r.LatencyMs)
+		case "speed":
+			a.nodeMgr.RecordMetric(r.NodeURL, "speed", r.SpeedKBps)
+		default:
+			if r.Error == "" {
+				a.nodeMgr.RecordDownload(r.NodeURL, r.LatencyMs, r.SpeedKBps, r.Bytes/1024, true)
+			} else {
+				a.nodeMgr.RecordDownload(r.NodeURL, r.LatencyMs, 0, 0, false)
+			}
+		}
+	}
 func (a *API) FetchNodes(w http.ResponseWriter, r *http.Request) {
 	result, err := fetcher.FetchAndMerge(r.Context(), a.nodeMgr, a.saveFn)
 	if err != nil {

@@ -151,6 +151,11 @@ func (m *Manager) SelectBest(registry string) *Node {
 }
 
 // RecordDownload writes all event metrics to the DB after a download completes.
+func (m *Manager) RecordMetric(nodeURL, eventType string, eventValue int64) {
+	if m.db == nil { return }
+	m.db.InsertMetricEvent(store.MetricEvent{NodeURL: nodeURL, EventType: eventType, EventValue: eventValue})
+}
+
 func (m *Manager) RecordDownload(nodeURL string, latencyMs, speedKBps, byteKB int64, success bool) {
 	if m.db == nil {
 		return
