@@ -21,6 +21,7 @@ import (
 	"github.com/pullfusion/pullfusion/internal/metrics"
 	"github.com/pullfusion/pullfusion/internal/nodemgr"
 	"github.com/pullfusion/pullfusion/internal/server"
+	"github.com/pullfusion/pullfusion/internal/speedtest"
 	"github.com/pullfusion/pullfusion/internal/store"
 	"github.com/pullfusion/pullfusion/pkg/version"
 )
@@ -45,7 +46,6 @@ func main() {
 
 	tokenSvc := auth.NewTokenService()
 
-	// 初始化 Blob 本地磁盘缓存（二次加速）
 	var blobCache *cache.Cache
 	if cfg.Downloader.CacheEnabled {
 		blobCache, err = cache.NewCache(cfg.Downloader.CacheDir, cfg.Downloader.CacheMaxSize)
@@ -53,15 +53,13 @@ func main() {
 			slog.Error("failed to create blob cache, caching disabled", "error", err)
 		} else {
 			used, _, count := blobCache.Stats()
-			slog.Info("blob cache enabled", "dir", cfg.Downloader.CacheDir,
-				"used", used, "files", count)
+			slog.Info("blob cache enabled", "dir", cfg.Downloader.CacheDir, "used", used, "files", count)
 		}
 	}
 
 	database, _ := store.Open("data")
 	nodeMgr := nodemgr.NewManagerWithStore(cfg, database)
 
-	// Load persisted nodes, auto-fetch if empty
 	loaded, _ := persist.Load(nodeMgr, cfg)
 	if loaded == 0 {
 		slog.Info("no persisted nodes, auto-fetching from status.anye.xyz")
@@ -76,8 +74,6 @@ func main() {
 		}
 	}
 
-	
-
 	configWatcher, err := config.StartWatcher(*configPath, cfg, nodeMgr)
 	if err != nil {
 		slog.Warn("failed to start config watcher, hot-reload disabled", "error", err)
@@ -88,11 +84,11 @@ func main() {
 	api := admin.NewAPI(nodeMgr, func() error { return persist.Save(nodeMgr, cfg) })
 
 	deps := &server.Dependencies{
-		Config:     cfg,
-		NodeMgr:    nodeMgr,
+		Config:       cfg,
+		NodeMgr:      nodeMgr,
 		Downloader:   dl,
 		TokenService: tokenSvc,
-		Recorder:   api,
+		Recorder:     api,
 	}
 
 	registrySrv, err := server.NewRegistryServer(cfg, deps)
@@ -117,6 +113,30 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+
+	// Periodic speed test: measures latency + throughput of all enabled nodes every 5 min
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		st := speedtest.New(5 * time.Minute)
+		run := func() {
+			for _, n := range nodeMgr.List() {
+				if !n.Enabled {
+					continue
+				}
+				r := st.TestOne(speedtest.NodeInfo{URL: n.URL, Token: n.Token})
+				if r.Error == "" {
+					nodeMgr.RecordDownload(n.URL, r.LatencyMs, r.SpeedKBps, r.Bytes/1024, true)
+				} else {
+					nodeMgr.RecordDownload(n.URL, r.LatencyMs, 0, 0, false)
+				}
+			}
+		}
+		run()
+		for range ticker.C {
+			run()
+		}
+	}()
 
 	go func() {
 		addr := fmt.Sprintf(":%d", cfg.Server.RegistryPort)
