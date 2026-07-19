@@ -102,7 +102,7 @@ func Load(path string) (*Config, error) {
 // applyDefaults 应用默认值
 func applyDefaults(cfg *Config) {
 	if cfg.Server.RegistryPort == 0 {
-		cfg.Server.RegistryPort = 5443
+		cfg.Server.RegistryPort = 443
 	}
 	if cfg.Server.ProxyPort == 0 {
 		cfg.Server.ProxyPort = 5003

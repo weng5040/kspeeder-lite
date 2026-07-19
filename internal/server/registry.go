@@ -2,6 +2,7 @@ package server
 
 import (
 	"crypto/tls"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -96,7 +97,7 @@ func NewRegistryServer(cfg *config.Config, deps *Dependencies) (*http.Server, er
 	}
 
 	srv := &http.Server{
-		Addr:      ":5443",
+		Addr:      fmt.Sprintf(":%d", cfg.Server.RegistryPort),
 		Handler:   r,
 		TLSConfig: tlsConfig,
 	}

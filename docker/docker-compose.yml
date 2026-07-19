@@ -8,7 +8,7 @@ services:
     # image: ghcr.io/weng5040/pullfusion:latest
     container_name: pullfusion
     ports:
-      - "5443:5443"
+      - "443:443"
       - "5003:5003"
     volumes:
       - ./config:/config
